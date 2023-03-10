@@ -24,6 +24,8 @@ import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from einops import rearrange
 
+from undercomplete_autoencoder import count_parameters
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print (device)
 
@@ -49,11 +51,11 @@ def npy_loader(path):
 		sample = torch.rot90(sample, dims=[2, 3])
 	return sample / 255.
 
-path = pathlib.Path('../nnetworks/lsun_churches/churches/church_outdoor_train_lmdb_color_64.npy',  fname='Combined')
+# path = pathlib.Path('../nnetworks/lsun_churches/churches/church_outdoor_train_lmdb_color_64.npy',  fname='Combined')
 
-dataset = npy_loader(path)
-dset = torch.utils.data.TensorDataset(dataset)
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
+# dataset = npy_loader(path)
+# dset = torch.utils.data.TensorDataset(dataset)
+# dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
 # helpers
 def exists(x):
@@ -569,26 +571,28 @@ model = Unet(
 
 # model = FCEncoder().to(device)
 optimizer = Adam(model.parameters(), lr=1e-4)
+print (model)
 
-epochs = 10
-for epoch in range(epochs):
-	start_time = time.time()
-	total_loss = 0
-	for step, batch in enumerate(dataloader):
+# epochs = 10
+# for epoch in range(epochs):
+# 	start_time = time.time()
+# 	total_loss = 0
+# 	for step, batch in enumerate(dataloader):
 		 
-		if len(batch) < batch_size:
-			break
-		optimizer.zero_grad()
-		batch = batch.to(device) # discard class labels
-		timestep = torch.randint(0, timesteps, (batch_size,), device=device).long().to(device) # integer
-		loss = p_losses(model, batch, timestep, loss_type="l2")
-		total_loss += loss.item()
+# 		if len(batch) < batch_size:
+# 			break
+# 		optimizer.zero_grad()
+# 		batch = batch.to(device) # discard class labels
+# 		timestep = torch.randint(0, timesteps, (batch_size,), device=device).long().to(device) # integer
+# 		loss = p_losses(model, batch, timestep, loss_type="l2")
+# 		total_loss += loss.item()
  
-		loss.backward()
-		optimizer.step()
-	print (f"Epoch {epoch} completed in {time.time() - start_time} seconds")
-	print (f"Average Loss: {round(total_loss / step, 5)}")
+# 		loss.backward()
+# 		optimizer.step()
+# 	print (f"Epoch {epoch} completed in {time.time() - start_time} seconds")
+# 	print (f"Average Loss: {round(total_loss / step, 5)}")
 
+count_parameters(model)
 n = 64
 gen_images = sample(model, 64, batch_size=n, channels=channels)
 # gen_images = gen_images.cpu().numpy()

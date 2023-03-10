@@ -273,15 +273,10 @@ class FCEncoder(nn.Module):
 		super().__init__()
 		starting = starting_size
 		self.input_transform = nn.Linear(32*32*3, starting)
-		self.d1 = nn.Linear(starting, starting)
-		self.d2 = nn.Linear(starting, starting)
-		self.d3 = nn.Linear(starting, starting)
-		self.d4 = nn.Linear(starting, starting)
-		self.d5 = nn.Linear(starting, starting)
-		self.d6 = nn.Linear(starting, starting)
-		self.d7 = nn.Linear(starting, starting)
-		self.d8 = nn.Linear(starting, starting)
-		self.d9 = nn.Linear(starting, 32*32*3)
+		self.dense_layers = [0]*5
+		for i in range(5):
+			self.dense_layers[i] = nn.Linear(starting, starting).to(device)
+		self.d6 = nn.Linear(starting, 32*32*3)
 		self.bn1 = nn.BatchNorm1d(starting)
 		self.bn2 = nn.BatchNorm1d(starting)
 		self.bn3 = nn.BatchNorm1d(starting)
@@ -299,35 +294,11 @@ class FCEncoder(nn.Module):
 		out = self.input_transform(input_tensor)
 		out = self.bn1(self.gelu(out))
 
-		out1 = self.d1(out)
-		out = self.gelu(out1) 
-		
-		out2 = self.d2(out)
-		out = self.gelu(out2)
-		out = self.bn2(out)
-
-		out = self.d3(out)
-		out = self.gelu(out)
-
-		out = self.d4(out)
-		out = self.gelu(out)
-		out = self.bn3(out)
-
-		out = self.d5(out)
-		out = self.gelu(out)
+		for i in range(5):
+			out = self.dense_layers[i](out)
+			out = self.gelu(out)
 
 		out = self.d6(out)
-		out = self.gelu(out)
-		out = self.bn4(out)
-
-		out = self.d7(out)
-		out = self.gelu(out)
-
-		out = self.d8(out)
-		out = self.gelu(out)
-		out = self.bn5(out)
-
-		out = self.d9(out)
 		out = out.reshape(batch_size, channels, image_size, image_size)
 		return out 
 
@@ -372,7 +343,8 @@ def show_batch(input_batch, count=0, grayscale=False, normalize=True):
 
 # model = FCEncoder(5000, 3).to(device) 
 # model = SmallDeepFCEncoder(4000, 3).to(device)
-model = SmallFCEncoder(4000, 3).to(device)
+# model = SmallFCEncoder(4000, 3).to(device)
+model = FCEncoder(4000, 3).to(device)
 # model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
 #     in_channels=3, out_channels=3, init_features=32, pretrained=False).to(device)
 
@@ -404,7 +376,7 @@ def count_parameters(model):
 # model = unet_noresiduals.UNet(n_channels=3, n_classes=3).to(device)
 # resnet = NewResnet(torch.hub.load('pytorch/vision:v0.10.0', 'resnet50', pretrained=True), 32*32*3).to(device)
 # model = SingleEncoder(30000, channels=3).to(device)
-count_parameters(model)
+
 
 optimizer = Adam(model.parameters(), lr=1e-4) 
 loss_fn = torch.nn.MSELoss()
@@ -432,17 +404,13 @@ def train_autoencoder():
 
 		print (f"Epoch {epoch} completed in {time.time() - start_time} seconds")
 		print (f"Average Loss: {round(total_loss / step, 5)}")
-		torch.save(model.state_dict(), 'fcnet_smaller_autoencoder_bn_cifar.pth')
+		torch.save(model.state_dict(), 'fcnet_autoencoder_bn_cifar.pth')
 
 		if epoch % 10 == 0:
 			batch = next(iter(dataloader))[0].to(device)
 			gen_images = model(batch).cpu().permute(0, 2, 3, 1).detach().numpy()
 			show_batch(gen_images, count=epoch, grayscale=False, normalize=False)
 
-# batch = next(iter(data loader)).cpu().permute(0, 2, 3, 1).detach().numpy()
-# show_batch(batch, count=999, grayscale=False, normalize=False)
-model.load_state_dict(torch.load('fcnet_smallautoencoder_cifar.pth')) 
-# train_autoencoder()
 
 def interpolate_latent():
 	data = iter(dataloader)
@@ -557,8 +525,7 @@ def directed_manifold_walk():
 
 	return
 
-# model.eval()
-# random_manifold_walk()
+
 
 @torch.no_grad()
 def observe_denoising():
@@ -601,7 +568,6 @@ def observe_denoising():
 	print (f'L2 Distance on the Input after Gaussian Noise: {input_distance}')
 	print (f'L2 Distance on the Autoencoder Output after Gaussian Noise: {output_distance}')
 
-observe_denoising()
 
 @torch.no_grad()
 def generate_with_noise():
@@ -655,10 +621,19 @@ def find_analogues(input):
 	plt.close()
 	return
 
+if __name__ == '__main__':
+	count_parameters(model)
+	# batch = next(iter(data loader)).cpu().permute(0, 2, 3, 1).detach().numpy()
+	# show_batch(batch, count=999, grayscale=False, normalize=False)
+	# model.load_state_dict(torch.load('fcnet_smallautoencoder_cifar.pth')) 
+	train_autoencoder()
 
-batch = generate_with_noise()
-# data = iter(dataloader)
-# batch = next(data)[0].to(device)
-# show_batch(batch.cpu().permute(0, 2, 3, 1).detach().numpy())
-find_analogues(batch[0])
+	# model.eval()
+	# random_manifold_walk()
+	observe_denoising()
+	batch = generate_with_noise()
+	# data = iter(dataloader)
+	# batch = next(data)[0].to(device)
+	# show_batch(batch.cpu().permute(0, 2, 3, 1).detach().numpy())
+	find_analogues(batch[0])
 

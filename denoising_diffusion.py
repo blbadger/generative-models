@@ -100,10 +100,10 @@ channels = 3
 # dset = torch.utils.data.TensorDataset(dataset)  
 # dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-data_dir = pathlib.Path('../nnetworks/landscapes',  fname='Combined')
-train_data = ImageDataset(data_dir, image_type='.jpg')
-dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-print (len(dataloader))
+# data_dir = pathlib.Path('../nnetworks/landscapes',  fname='Combined')
+# train_data = ImageDataset(data_dir, image_type='.jpg')
+# dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+# print (len(dataloader))
 
 # helpers
 def exists(x):
@@ -582,8 +582,8 @@ model = Unet(
 
 # model = FCEncoder().to(device)
 optimizer = Adam(model.parameters(), lr=1e-4)
-model.load_state_dict(torch.load('lsun_churches_64_diffusion.pth'))
-
+# model.load_state_dict(torch.load('lsun_churches_64_diffusion.pth'))
+print (model)
 # epochs = 50
 # for epoch in range(epochs):
 # 	start_time = time.time()
