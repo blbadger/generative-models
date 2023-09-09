@@ -78,7 +78,7 @@ def npy_loader(path):
     return sample / 255.
 
 
-batch_size = 32
+batch_size = 8
 image_size = 128
 channels = 3
 
@@ -87,9 +87,10 @@ channels = 3
 # dset = torch.utils.data.TensorDataset(dataset)
 # dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-data_dir = pathlib.Path('../nnetworks/landscapes',  fname='Combined')
+data_dir = pathlib.Path('../../landscapes',  fname='Combined')
 train_data = ImageDataset(data_dir, image_type='.jpg')
 dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+fixed_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=False)
 
 
 def show_batch(input_batch, count=0, grayscale=False, normalize=True):
@@ -110,7 +111,7 @@ def show_batch(input_batch, count=0, grayscale=False, normalize=True):
     """
 
     plt.figure(figsize=(15, 15))
-    length, width = 4, 4 
+    length, width = 2, 2 
     for n in range(length*width):
         ax = plt.subplot(length, width, n+1)
         plt.axis('off')
@@ -130,17 +131,20 @@ def show_batch(input_batch, count=0, grayscale=False, normalize=True):
     return 
 
 # model = UNet(3, 3).to(device)
-model = UNetWide(3, 3).to(device)
-# model = UNetDeepWide(3, 3).to(device) 
+# model = UNetWide(3, 3).to(device)
+model = UNetDeepWide(3, 3).to(device) 
 # model = UNetWideHidden(3, 3).to(device)
-optimizer = Adam(model.parameters(), lr=1e-4) 
+optimizer = Adam(model.parameters(), lr=1e-4)
 loss_fn = torch.nn.MSELoss()
+cosine_loss = torch.nn.CosineSimilarity(dim=0)
 
 def train_autoencoder():
-    epochs = 1000
+    epochs = 500
+    alpha = 1
     for epoch in range(epochs):
         start_time = time.time()
         total_loss = 0
+        total_mse_loss = 0
         choices = [1, 2, 4]
         for step, batch in enumerate(dataloader):
             if len(batch) < batch_size:
@@ -148,25 +152,28 @@ def train_autoencoder():
             optimizer.zero_grad()
             batch = batch.to(device) # discard class labels
             # batch = torchvision.transforms.Resize(random.choice(choices)*32)(batch)
-            # print (batch.shape)
             output = model(batch) #, torch.ones(1).to(device))
+            mse_loss = loss_fn(output, batch)
+            total_mse_loss += mse_loss
 
-            loss = loss_fn(output, batch) # + loss_fn(gen_res, real_res)
+            loss = (alpha * loss_fn(output, batch)) - cosine_loss(output.flatten(), batch.flatten())
             total_loss += loss.item()
             loss.backward()
             optimizer.step()
-
+ 
         print (f"Epoch {epoch} completed in {time.time() - start_time} seconds")
         print (f"Average Loss: {round(total_loss / step, 5)}")
-        torch.save(model.state_dict(), 'wide_unet_128_4096.pth')
+        torch.save(model.state_dict(), 'wide_unet_dualloss.pth')
+        if (total_mse_loss / step) * alpha < 1:
+            alpha *= 2
 
         if epoch % 5 == 0:
-            batch = next(iter(dataloader)).to(device)
+            batch = next(iter(fixed_dataloader)).to(device)
             gen_images = model(batch).cpu().permute(0, 2, 3, 1).detach().numpy() # torch.ones(1).to(device)
             show_batch(gen_images, count=epoch//5, grayscale=False, normalize=False)
 
 batch = next(iter(dataloader)).cpu().permute(0, 2, 3, 1).detach().numpy()
-model.load_state_dict(torch.load('wide_unet_128.pth'))
+model.load_state_dict(torch.load('wide_unet_dualloss.pth')) 
 # model.eval() 
 # train_autoencoder()
 
@@ -193,7 +200,7 @@ def observe_denoising():
     print (f'L2 Distance on the Input after Blurring: {input_distance}')
     print (f'L2 Distance on the Autoencoder Output after Blurring: {output_distance}')
 
-    alpha = 0.1
+    alpha = 1
     batch = original_batch
 
     original = batch[0]
@@ -203,15 +210,15 @@ def observe_denoising():
     transformed_output = model(batch.to(device))[0][0]
 
     shown = batch.cpu().permute(0, 2, 3, 1).detach().numpy()
-    show_batch(shown, count=100, grayscale=False, normalize=False)
+    show_batch(shown, count=1001, grayscale=False, normalize=False)
     gen_images = model(batch.to(device)).cpu().permute(0, 2, 3, 1).detach().numpy()
-    show_batch(gen_images, count=99, grayscale=False, normalize=False)
+    show_batch(gen_images, count=1002, grayscale=False, normalize=False)
     input_distance = torch.sum((original - transformed)**2)**0.5
     output_distance = torch.sum((original_output - transformed_output)**2)**0.5
     print (f'L2 Distance on the Input after Gaussian Noise: {input_distance}')
     print (f'L2 Distance on the Autoencoder Output after Gaussian Noise: {output_distance}')
   
-observe_denoising()
+# observe_denoising()
 
 @torch.no_grad()
 def generate_with_noise():
@@ -219,36 +226,36 @@ def generate_with_noise():
     alpha = 0
     batch = alpha * batch + (1-alpha) * torch.normal(0.7, 0.2, batch.shape) # random initial input
     for i in range(200):
-        alpha = i / 200
+        alpha = i / 800
         gen_images = model(batch.to(device))
         batch = alpha * gen_images + (1-alpha) * torch.normal(0.7, 0.2, batch.shape).to(device) 
         show_batch(gen_images.cpu().permute(0, 2, 3, 1).detach().numpy(), count=i, grayscale=False, normalize=True)
 
-generate_with_noise() 
+# generate_with_noise() 
 
 @torch.no_grad()
 def generate_with_increasing_resolution(starting_resolution=128):
     batch = next(iter(dataloader))
     alpha = 0
     batch = alpha * batch + (1-alpha) * torch.normal(0.7, 0.2, batch.shape) # random initial input
-    for i in range(40):
-        if i == 30:
+    for i in range(30):
+        if i == 20:
             batch = torchvision.transforms.Resize(256)(batch)
-        # if i == 30:
+        # if i == 40:
         #     batch = torchvision.transforms.Resize(512)(batch)
         alpha = i / 40
         gen_images = model(batch.to(device))
         batch = alpha * gen_images + (1-alpha) * torch.normal(0.7, 0.2, batch.shape).to(device) 
         show_batch(gen_images.cpu().permute(0, 2, 3, 1).detach().numpy(), count=i, grayscale=False, normalize=False)
 
-# generate_with_increasing_resolution()
+generate_with_increasing_resolution()
 
 
 new_vision = model
 alpha = 0.1
 batch = next(iter(dataloader))
 image = alpha * batch + (1-alpha) * torch.normal(0.7, 0.2, batch.shape)
-image = image[0].reshape(1, 3, 256, 256).to(device)
+image = image[0].reshape(1, 3, 128, 128).to(device)
 target_tensor = new_vision(image)
 
 target_tensor = target_tensor.detach().to(device)
@@ -260,7 +267,7 @@ plt.axis('off')
 plt.savefig('target_image', bbox_inches='tight', pad_inches=0.1)
 plt.close()
 
-modification = torch.randn(1, 3, 256, 256)/18
+modification = torch.randn(1, 3, 128, 128)/18
 modification = modification.to(device)
 modified_input = image + modification
 modified_output = new_vision(modified_input)
@@ -278,7 +285,7 @@ print (f'L2 distance between target and slightly modified image: {torch.sqrt(tor
 # alpha = 0.5
 # batch = next(iter(dataloader))
 # image = alpha * batch + (1-alpha) * torch.normal(0.7, 0.2, batch.shape)
-# image = image[0].reshape(1, 3, 256, 256).to(device)
+# image = image[0].reshape(1, 3, image_size, image_size).to(device)
 # np_image = image.reshape(3, image_width, image_width).permute(1, 2, 0).cpu().detach().numpy()
 # plt.figure(figsize=(10, 10))
 # plt.imshow(np_image)
@@ -385,21 +392,21 @@ def generate_singleinput(model, input_tensors, output_tensors, index, count, tar
     input_distances = []
     iterations_arr = []
     if random_input:
-        single_input = (torch.randn(1, 3, 256, 256))/20 + 0.7 # scaled normal distribution initialization
+        single_input = (torch.randn(1, 3, image_size, image_size))/20 + 0.7 # scaled normal distribution initialization
     else:
         single_input = input_tensors
 
     iterations = 1000 
     single_input = single_input.to(device)
-    single_input = single_input.reshape(1, 3, 256, 256)
-    original_input = torch.clone(single_input).reshape(3, 256, 256).permute(1, 2, 0).cpu().detach().numpy()
+    single_input = single_input.reshape(1, 3, image_size, image_size)
+    original_input = torch.clone(single_input).reshape(3, image_size, image_size).permute(1, 2, 0).cpu().detach().numpy()
     target_output = torch.tensor([class_index], dtype=int)
 
     single_input = octave(single_input, target_output, iterations, [0.1, 0.1], [2.4, 0.4], 0, pad=False, crop=False)
 
     output = model(single_input).to(device)
     print (f'L2 distance between target and generated image: {torch.sqrt(torch.sum((target_tensor - output)**2))}')
-    target_input = torch.tensor(target_input).reshape(1, 3, 256, 256).to(device)
+    target_input = torch.tensor(target_input).reshape(1, 3, image_size, image_size).to(device)
     input_distance = torch.sqrt(torch.sum((single_input - image)**2))
     print (f'L2 distance on the input: {input_distance}')
     input_distances.append(float(input_distance))
