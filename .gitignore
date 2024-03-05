@@ -1,2 +1,4 @@
 # Ignore all text files
 *.txt
+
+/mixer_lm/mlruns
