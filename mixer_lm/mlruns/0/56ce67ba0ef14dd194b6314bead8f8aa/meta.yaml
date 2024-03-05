@@ -1,0 +1,15 @@
+artifact_uri: file:///home/bbadger/Desktop/generative-models/mixer_lm/mlruns/0/56ce67ba0ef14dd194b6314bead8f8aa/artifacts
+end_time: null
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 56ce67ba0ef14dd194b6314bead8f8aa
+run_name: /home/bbadger/Desktop/tinystories_mixer_llama
+run_uuid: 56ce67ba0ef14dd194b6314bead8f8aa
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1709594689464
+status: 1
+tags: []
+user_id: bbadger

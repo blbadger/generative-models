@@ -7,12 +7,16 @@ import torch
 import einops
 from einops import rearrange
 import transformers
+from transformers import PreTrainedTokenizerFast
 from transformers import TextDataset, Trainer, TrainingArguments
 from transformers import TextDataset, Trainer, TrainingArguments, AutoModelWithLMHead, DataCollatorForLanguageModeling
 import torch.nn as nn
 import mlflow
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from datasets import load_dataset
+import sentencepiece
+from tokenizers import ByteLevelBPETokenizer
+from transformers import LlamaConfig, LlamaForCausalLM
 
 
 def FeedForward(dim, expansion_factor=4):
@@ -80,15 +84,31 @@ class LanguageMixer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
-tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
+dim = 128
+llama_config_kwargs = {
+    'hidden_size': dim,
+    'intermediate_size': 4*dim,
+    'num_hidden_layers': 8,
+    'num_heads': 16,
+    'vocab_size': 4096
+}
+
+# Initializing a LLaMA llama-70b style configuration
+configuration = LlamaConfig(**llama_config_kwargs)
+
+# Initializing a model from the llama-7b style configuration
+model = LlamaForCausalLM(configuration).float()
+
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
+print (tokenizer.is_fast)
 
-# barebones MLP mixer, expects an embedding on input tokens
-tokenized_length = 512
-dim = 128
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+# # barebones MLP mixer, expects an embedding on input tokens
+# tokenized_length = 512
+# dim = 256
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 print (model)
 
 import prettytable
@@ -143,7 +163,7 @@ def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
 	max_length = 512
 
-	for i in range(50000):
+	for i in range(500000):
 		input_ids = tokenizer.encode(
 			train_text[i]['text'],
 			add_special_tokens=False,
@@ -188,18 +208,32 @@ def tokenize_input(train_text, test_text):
 train_data, test_data = tokenize_input(train_text, valid_text)
 # train_data, test_data = debetach_input(train_data), debatch_input(test_data)
 
+def reformat_inputs(train_data, test_data):
+	# reformat inputs for transformer model
+	for i, _ in enumerate(train_data):
+		train_data[i] = train_data[i].flatten()
+
+	for i, _ in enumerate(test_data):
+		test_data[i] = test_data[i].flatten()
+	return train_data, test_data
+
+
+if isinstance(model, LlamaForCausalLM):
+	reformat_inputs(train_data, test_data)
+
+
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=1,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=64,
-	warmup_steps=100,
-	eval_steps=2000,
-	save_steps=500,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=32,
+	warmup_steps=500,
+	eval_steps=1000,
+	save_steps=1000,
 	learning_rate=1e-4,
-	fp16=True,
+	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer',
+	output_dir='~/Desktop/tinystories_mixer_llama',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
@@ -211,5 +245,5 @@ trainer = transformers.Trainer(
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
-
+model.train()
 trainer.train()
