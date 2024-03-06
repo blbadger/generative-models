@@ -36,6 +36,7 @@ configuration = LlamaConfig(**llama_config_kwargs)
 # Initializing a model from the llama-7b style configuration
 model = LlamaForCausalLM(configuration).float()
 
+# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
@@ -91,7 +92,7 @@ def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
 	max_length = 512
 
-	for i in range(500000):
+	for i in range(64000):
 		input_ids = tokenizer.encode(
 			train_text[i]['text'],
 			add_special_tokens=False,
@@ -152,7 +153,7 @@ if isinstance(model, LlamaForCausalLM):
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=1,
+	num_train_epochs=10,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
@@ -161,7 +162,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_llama',
+	output_dir='~/Desktop/tinystories_llama',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )

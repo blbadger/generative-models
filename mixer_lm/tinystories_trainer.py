@@ -27,20 +27,36 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
+def ConvForward(dim, expansion_factor=4):
+	inner_dim = int(dim * expansion_factor)
+	return nn.Sequential(
+		nn.Conv1d(dim, inner_dim, 1),
+		nn.GELU(),
+		nn.Conv1d(inner_dim, dim, 1)
+		)
+
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expansion_factor=4, dropout=0.):
+	def __init__(self, dim, length, mixer_mask=True, expansion_factor=4, dropout=0., expand=False):
 		super().__init__()
 		self.layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(length)
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim, expansion_factor=expansion_factor)
-		self.conv = nn.Conv1d(dim, dim, 1)
-
+		if expand:
+			self.conv = ConvForward(dim, expansion_factor=expansion_factor)
+		else:
+			self.conv = nn.Conv1d(dim, dim, 1)
+		
 		# for CLM training: mask conv weights to become upper-triangular
 		if mixer_mask:
-			self.conv.weight = torch.nn.Parameter(torch.triu(self.conv.weight))
+			if expand:
+				self.conv[0].weight = torch.nn.Parameter(torch.triu(self.conv[0].weight))
+				self.conv[2].weight = torch.nn.Parameter(torch.triu(self.conv[2].weight))
+			else:
+				self.conv.weight = torch.nn.Parameter(torch.triu(self.conv.weight))
+
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -84,31 +100,17 @@ class LanguageMixer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
-dim = 128
-llama_config_kwargs = {
-    'hidden_size': dim,
-    'intermediate_size': 4*dim,
-    'num_hidden_layers': 8,
-    'num_heads': 16,
-    'vocab_size': 4096
-}
-
-# Initializing a LLaMA llama-70b style configuration
-configuration = LlamaConfig(**llama_config_kwargs)
-
-# Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
-
+# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 # # barebones MLP mixer, expects an embedding on input tokens
-# tokenized_length = 512
-# dim = 256
-# device = 'cuda' if torch.cuda.is_available() else 'cpu'
-# model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+tokenized_length = 512
+dim = 512
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model = LanguageMixer(n_vocab, dim, 16).float().to(device)
 print (model)
 
 import prettytable
@@ -130,6 +132,7 @@ def count_parameters(model):
 
 count_parameters(model)
 
+# cached dataset
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
 
@@ -209,7 +212,7 @@ train_data, test_data = tokenize_input(train_text, valid_text)
 # train_data, test_data = debetach_input(train_data), debatch_input(test_data)
 
 def reformat_inputs(train_data, test_data):
-	# reformat inputs for transformer model
+	# reformat inputs for transformer modelz`
 	for i, _ in enumerate(train_data):
 		train_data[i] = train_data[i].flatten()
 
@@ -223,6 +226,21 @@ if isinstance(model, LlamaForCausalLM):
 
 
 mlflow.end_run()
+# training_arguments = transformers.TrainingArguments(
+# 	num_train_epochs=3,
+# 	per_device_train_batch_size=32,
+# 	per_device_eval_batch_size=32,
+# 	warmup_steps=500,
+# 	eval_steps=1000,
+# 	save_steps=1000,
+# 	learning_rate=1e-4,
+# 	fp16=True, 
+# 	evaluation_strategy='steps',
+# 	output_dir='~/Desktop/tinystories_mixer_full',
+# 	optim='adamw_torch',
+# 	overwrite_output_dir=True,
+# )
+
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=1,
 	per_device_train_batch_size=16,
@@ -233,7 +251,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_llama',
+	output_dir='~/Desktop/tinystories_mixer_memmatched',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
@@ -245,5 +263,6 @@ trainer = transformers.Trainer(
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
+
 model.train()
 trainer.train()
