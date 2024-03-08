@@ -41,35 +41,38 @@ def ConvForward(dim, expansion_factor=4):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expansion_factor=4):
+	def __init__(self, dim, length, mixer_mask=True, expansion_factor=4, expand_conv=True):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim, expansion_factor=expansion_factor)
-		self.conv = nn.Conv1d(length, length, 1)
+		self.expand_conv = expand_conv
+		if self.expand_conv:
+			self.conv = ConvForward(length)
+		else:
+			self.conv = nn.Conv1d(length, length, 1)
 		
 		# for CLM training, apply lower triangular mask to convolution weights
 		self.mixer_mask = mixer_mask
-		if mixer_mask:
-			self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f d p -> f (d p)'))
-			self.conv.weight = torch.nn.Parameter(torch.tril(self.conv.weight))
-			self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f (d p) -> f d p', p=1))
-
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
 		if self.mixer_mask:
-			self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f d p -> f (d p)'))
-			self.conv.weight = torch.nn.Parameter(torch.tril(self.conv.weight))
-			self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f (d p) -> f d p', p=1))
-		# x = rearrange(x, 'b t f -> b f t')
+			if self.expand_conv:
+				masked_conv0 = nn.Parameter(rearrange(torch.tril(rearrange(self.conv[0].weight, 'f d p -> f (d p)')), 'f (d p) -> f d p', p=1))
+				masked_conv2 = nn.Parameter(rearrange(torch.tril(rearrange(self.conv[2].weight, 'f d p -> f (d p)')), 'f (d p) -> f d p', p=1))
+				self.conv[0].weight = masked_conv0
+				self.conv[2].weight = masked_conv2
+			else:
+				self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f d p -> f (d p)'))
+				self.conv.weight = torch.nn.Parameter(torch.tril(self.conv.weight))
+				self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f (d p) -> f d p', p=1))
 		residual = x
 		x = self.conv(x) + residual
 		x = self.seq_layernorm(x)
-		# x = rearrange(x, 'b f t -> b t f')
 		residual = x
 		x = self.patch_ff(x) + residual
 		x = self.patch_layernorm(x)
@@ -98,6 +101,7 @@ class LanguageMixer(nn.Module):
 		x = self.wte(x)
 		for block in self.mixerblocks:
 			x = block(x)
+		# output = torch.matmul(x, self.wte.weight.T)
 		output = self.lm_head(x)
 		labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
@@ -114,15 +118,15 @@ print (tokenizer.is_fast)
 
 # # barebones MLP mixer, expects an embedding on input tokens
 tokenized_length = 512
-dim = 256
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 4).float().to(device)
+model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
-# one = torch.tensor([[[1, 2, 4]]]).to(device)
+# one = torch.tensor([[[1, 4, 3]]]).to(device)
 # two = torch.tensor([[[1, 2, 3]]]).to(device)
 # print (model(one, labels=one))
 # print (model(two, labels=two))
-print (model)
+# print (model)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -173,7 +177,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=50000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=1000000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -284,7 +288,7 @@ mlflow.end_run()
 # )
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=10,
+	num_train_epochs=4,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=64,
 	warmup_steps=500,

@@ -121,7 +121,7 @@ model = LlamaForCausalLM(configuration).float()
 
 load_model(model, '/home/bbadger/Desktop/tinystories_llama_large/checkpoint-114000/model.safetensors')
 
-prompt = '''One day, a little girl named Lily '''
+prompt = '''Once upon a time there was'''
 
 tokens = tokenizer.encode(
 				prompt,
