@@ -18,6 +18,7 @@ import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import AutoModel
 from safetensors.torch import load_model, save_model, load_file
+from transformers import LlamaConfig, LlamaForCausalLM
 
 
 def FeedForward(dim, expansion_factor=4):
@@ -101,25 +102,54 @@ tokenized_length = 512
 dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8, mixer_mask=False).float().to(device)
-load_model(model, '/home/bbadger/Desktop/tinystories_mixer_large/checkpoint-12000/model.safetensors')
+
+dim = 128
+llama_config_kwargs = {
+    'hidden_size': dim,
+    'intermediate_size': 4*dim,
+    'num_hidden_layers': 8,
+    'num_heads': 16,
+    'vocab_size': 4096
+}
+
+# Initializing a LLaMA model
+configuration = LlamaConfig(**llama_config_kwargs)
+
+# Initializing a model from the llama-7b style configuration
+model = LlamaForCausalLM(configuration).float()
+
+
+load_model(model, '/home/bbadger/Desktop/tinystories_llama_large/checkpoint-114000/model.safetensors')
 
 prompt = '''One day, a little girl named Lily '''
+
 tokens = tokenizer.encode(
 				prompt,
 				add_special_tokens=False,
-				return_tensors='pt',
-				padding='max_length',
-				max_length=512
+				return_tensors='pt'
 			)
+
+gen = True
+if gen:
+	output = model.generate(tokens, max_new_tokens=100)
+	output = tokenizer.decode(output[0])
+	print (output, "\n")
+
+# output = model(tokens).logits
+
+# output = torch.topk(output, dim=2, k=1).indices
+# output = output.flatten()
+# tokens = tokenizer.decode(output)
 # print (tokens)
 
 fout = []
 for i in range(20):
-	output = model(tokens)[1]
-	last_output = output[:, :, -1]
-	output_index = torch.topk(last_output, dim=-1, k=1).indices
-	fout.append(int(output_index))
-	output_token = output_index.to('cpu')
-	tokens = torch.cat((tokens[:, 1:], output_token), dim=-1)
+	output = model(tokens).logits[:, -1, :]
+	output_indicies = torch.topk(output, dim=-1, k=1).indices[0]
+	output_token = output_indicies[0]
+	fout.append(output_token)
+	output_word = tokenizer.decode(output_token)
+	output_token = output_token.to('cpu')
+	tokens = torch.cat((tokens, output_token.unsqueeze(0).unsqueeze(0)), dim=-1)
 
 print (tokenizer.decode(fout))

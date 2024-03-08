@@ -83,16 +83,50 @@ def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	return tiled_arr
 
 def debatch_input(input_data):
+	output = []
 	for i in range(len(input_data)):
 		if input_data[i].dim() > 1:
-			input_data[i] = input_data[i].squeeze(0)
-	return input_data
+			input_data[i] = input_data[i].unsqueeze(1)
+			output += list(input_data[i])
+	return output
+
+
+def batch_tokenize_input(train_text, test_text, length=1000000, batch_size=1024):
+	train_data, test_data = [], []
+	max_length = 512
+
+	for i in range(0, length, batch_size):
+		input_ids = tokenizer.batch_encode_plus(
+			train_text[i:i+batch_size]['text'],
+			add_special_tokens=False,
+			return_tensors='pt',
+			truncation=True,
+			max_length=max_length,
+			padding='max_length'
+		).input_ids
+		train_data.append(input_ids)
+
+	for i in range(0, len(test_text), batch_size):
+		input_ids = tokenizer.batch_encode_plus(
+			test_text[i:i+batch_size]['text'],
+			add_special_tokens=False,
+			return_tensors='pt',
+			truncation=True,
+			max_length=max_length,
+			padding='max_length'
+		).input_ids
+		test_data.append(input_ids)
+
+	train_data = debatch_input(train_data)
+	test_data = debatch_input(test_data)
+
+	return train_data, test_data
 
 def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
 	max_length = 512
 
-	for i in range(64000):
+	for i in range(500000):
 		input_ids = tokenizer.encode(
 			train_text[i]['text'],
 			add_special_tokens=False,
@@ -134,7 +168,7 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-train_data, test_data = tokenize_input(train_text, valid_text)
+train_data, test_data = batch_tokenize_input(train_text, valid_text)
 # train_data, test_data = debetach_input(train_data), debatch_input(test_data)
 
 def reformat_inputs(train_data, test_data):
@@ -153,7 +187,7 @@ if isinstance(model, LlamaForCausalLM):
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=10,
+	num_train_epochs=4,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
@@ -162,7 +196,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_llama',
+	output_dir='~/Desktop/tinystories_llama_large',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )

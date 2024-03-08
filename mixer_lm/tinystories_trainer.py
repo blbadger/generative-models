@@ -3,6 +3,9 @@ import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
+import prettytable
+from prettytable import PrettyTable
+
 import torch
 import einops
 from einops import rearrange
@@ -17,6 +20,7 @@ from datasets import load_dataset
 import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
+
 
 
 def FeedForward(dim, expansion_factor=4):
@@ -37,43 +41,43 @@ def ConvForward(dim, expansion_factor=4):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expansion_factor=4, dropout=0., expand=False):
+	def __init__(self, dim, length, mixer_mask=True, expansion_factor=4):
 		super().__init__()
-		self.layernorm = nn.LayerNorm(dim)
-		self.seq_layernorm = nn.LayerNorm(length)
+		self.patch_layernorm = nn.LayerNorm(dim)
+		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim, expansion_factor=expansion_factor)
-		if expand:
-			self.conv = ConvForward(dim, expansion_factor=expansion_factor)
-		else:
-			self.conv = nn.Conv1d(dim, dim, 1)
+		self.conv = nn.Conv1d(length, length, 1)
 		
-		# for CLM training: mask conv weights to become upper-triangular
+		# for CLM training, apply lower triangular mask to convolution weights
+		self.mixer_mask = mixer_mask
 		if mixer_mask:
-			if expand:
-				self.conv[0].weight = torch.nn.Parameter(torch.triu(self.conv[0].weight))
-				self.conv[2].weight = torch.nn.Parameter(torch.triu(self.conv[2].weight))
-			else:
-				self.conv.weight = torch.nn.Parameter(torch.triu(self.conv.weight))
+			self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f d p -> f (d p)'))
+			self.conv.weight = torch.nn.Parameter(torch.tril(self.conv.weight))
+			self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f (d p) -> f d p', p=1))
 
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
-		x = rearrange(x, 'b t f -> b f t')
+		if self.mixer_mask:
+			self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f d p -> f (d p)'))
+			self.conv.weight = torch.nn.Parameter(torch.tril(self.conv.weight))
+			self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f (d p) -> f d p', p=1))
+		# x = rearrange(x, 'b t f -> b f t')
 		residual = x
 		x = self.conv(x) + residual
 		x = self.seq_layernorm(x)
-		x = rearrange(x, 'b f t -> b t f')
+		# x = rearrange(x, 'b f t -> b t f')
 		residual = x
 		x = self.patch_ff(x) + residual
-		x = self.layernorm(x)
+		x = self.patch_layernorm(x)
 		return x
 
 class LanguageMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth):
+	def __init__(self, n_vocab, dim, depth, tie_weights=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.mixerblocks = nn.ModuleList(
@@ -83,7 +87,9 @@ class LanguageMixer(nn.Module):
 				)
 			for i in range(depth)]
 			).to(device)
-		self.lm_head = nn.Linear(dim, n_vocab)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+		if tie_weights:
+			self.lm_head.weight = self.wte.weight
 		self.cel = nn.CrossEntropyLoss()
 
 	def forward(self, input_ids, labels=None):
@@ -108,13 +114,15 @@ print (tokenizer.is_fast)
 
 # # barebones MLP mixer, expects an embedding on input tokens
 tokenized_length = 512
-dim = 512
+dim = 256
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 16).float().to(device)
-print (model)
+model = LanguageMixer(n_vocab, dim, 4).float().to(device)
 
-import prettytable
-from prettytable import PrettyTable
+# one = torch.tensor([[[1, 2, 4]]]).to(device)
+# two = torch.tensor([[[1, 2, 3]]]).to(device)
+# print (model(one, labels=one))
+# print (model(two, labels=two))
+print (model)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -157,16 +165,50 @@ def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	return tiled_arr
 
 def debatch_input(input_data):
+	output = []
 	for i in range(len(input_data)):
 		if input_data[i].dim() > 1:
-			input_data[i] = input_data[i].squeeze(0)
-	return input_data
+			input_data[i] = input_data[i].unsqueeze(1)
+			output += list(input_data[i])
+	return output
+
+
+def batch_tokenize_input(train_text, test_text, length=50000, batch_size=1024):
+	train_data, test_data = [], []
+	max_length = 512
+
+	for i in range(0, length, batch_size):
+		input_ids = tokenizer.batch_encode_plus(
+			train_text[i:i+batch_size]['text'],
+			add_special_tokens=False,
+			return_tensors='pt',
+			truncation=True,
+			max_length=max_length,
+			padding='max_length'
+		).input_ids
+		train_data.append(input_ids)
+
+	for i in range(0, len(test_text), batch_size):
+		input_ids = tokenizer.batch_encode_plus(
+			test_text[i:i+batch_size]['text'],
+			add_special_tokens=False,
+			return_tensors='pt',
+			truncation=True,
+			max_length=max_length,
+			padding='max_length'
+		).input_ids
+		test_data.append(input_ids)
+
+	train_data = debatch_input(train_data)
+	test_data = debatch_input(test_data)
+
+	return train_data, test_data
 
 def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
 	max_length = 512
 
-	for i in range(500000):
+	for i in range(1000000):
 		input_ids = tokenizer.encode(
 			train_text[i]['text'],
 			add_special_tokens=False,
@@ -208,8 +250,8 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-train_data, test_data = tokenize_input(train_text, valid_text)
-# train_data, test_data = debetach_input(train_data), debatch_input(test_data)
+train_data, test_data = batch_tokenize_input(train_text, valid_text)
+train_data, test_data = debatch_input(train_data), debatch_input(test_data)
 
 def reformat_inputs(train_data, test_data):
 	# reformat inputs for transformer modelz`
@@ -227,8 +269,8 @@ if isinstance(model, LlamaForCausalLM):
 
 mlflow.end_run()
 # training_arguments = transformers.TrainingArguments(
-# 	num_train_epochs=3,
-# 	per_device_train_batch_size=32,
+# 	num_train_epochs=1,
+# 	per_device_train_batch_size=16,
 # 	per_device_eval_batch_size=32,
 # 	warmup_steps=500,
 # 	eval_steps=1000,
@@ -242,16 +284,16 @@ mlflow.end_run()
 # )
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=1,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=32,
+	num_train_epochs=10,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=1000,
 	save_steps=1000,
-	learning_rate=1e-4,
+	learning_rate=1e-5,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_memmatched',
+	output_dir='~/Desktop/tinystories_mixer_masked',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
@@ -266,3 +308,16 @@ trainer = transformers.Trainer(
 
 model.train()
 trainer.train()
+
+for name, param in model.named_parameters():
+	print (name)
+
+
+
+
+
+
+
+
+
+
