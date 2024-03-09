@@ -20,6 +20,7 @@ from transformers import AutoModel
 from safetensors.torch import load_model, save_model, load_file
 
 
+
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
@@ -28,7 +29,7 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def ConvForward(dim, expansion_factor=4):
+def ConvForward(dim, expansion_factor=1):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Conv1d(dim, inner_dim, 1),
@@ -68,11 +69,11 @@ class MixerBlock(nn.Module):
 				self.conv.weight = torch.nn.Parameter(torch.tril(self.conv.weight))
 				self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f (d p) -> f d p', p=1))
 		residual = x
-		x = self.conv(x) + residual
 		x = self.seq_layernorm(x)
+		x = self.conv(x) + residual
 		residual = x
-		x = self.patch_ff(x) + residual
 		x = self.patch_layernorm(x)
+		x = self.patch_ff(x) + residual
 		return x
 
 class LanguageMixer(nn.Module):
@@ -84,7 +85,6 @@ class LanguageMixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = tokenized_length,
-				mixer_mask=False
 				)
 			for i in range(depth)]
 			).to(device)
@@ -112,10 +112,10 @@ n_vocab = len(tokenizer)
 tokenized_length = 512
 dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8).float().to(device)
-load_model(model, '/home/bbadger/Desktop/tinystories_mixer_masked/checkpoint-122000/model.safetensors')
+model = LanguageMixer(n_vocab, dim, 12).float().to(device)
+load_model(model, '/home/bbadger/Desktop/tinystories_mixer_masked/checkpoint-194000/model.safetensors')
 
-prompt = prompt = '''One day, a little girl named Lily '''
+prompt = prompt = '''Once upon a time there was a tree named Barky. He '''
 
 tokens = tokenizer.encode(
 				prompt,
