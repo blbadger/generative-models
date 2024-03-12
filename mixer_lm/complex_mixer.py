@@ -33,7 +33,7 @@ class PhaseAmplitudeRelu(nn.Module):
 	def forward(self, z):
 		return F.relu(torch.abs(z)) * torch.exp(1.j * torch.angle(z))
 
-def FeedForward(dim, expansion_factor=2):
+def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Linear(dim, inner_dim).to(torch.cfloat),
@@ -51,7 +51,7 @@ def ConvForward(dim, expansion_factor=1):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
+	def __init__(self, dim, length, mixer_mask=True, expand_conv=True):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
@@ -82,7 +82,6 @@ class MixerBlock(nn.Module):
 				self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f (d p) -> f d p', p=1))
 		residual = x
 		# x.real = self.seq_layernorm(x.real)
-		# x = rotary_emb.rotate_queries_or_keys(x)
 		x = self.conv(x) + residual
 		residual = x
 		# x.real = self.patch_layernorm(x.real)
@@ -107,6 +106,8 @@ class LanguageMixer(nn.Module):
 		self.cel = nn.CrossEntropyLoss()
 		complex_position = torch.zeros(tokenized_length, dim)
 		complex_position = complex_position.to(torch.cfloat)
+
+		# positional encoding
 		scale = 2 / tokenized_length
 		for i in range(tokenized_length):
 			complex_position[i, :] = 0 + scale*1j * i
@@ -117,9 +118,12 @@ class LanguageMixer(nn.Module):
 		x = x.to(device)
 		x = self.wte(x)
 		x = x.to(torch.cfloat)
+
 		for block in self.mixerblocks:
-			x[..., :, :] += self.complex_position # apply positional encoding
+			# apply positional encoding
+			x[..., :, :] += self.complex_position
 			x = block(x)
+
 		output = self.lm_head(x).to(torch.float)
 		labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
@@ -137,7 +141,7 @@ print (tokenizer.is_fast)
 tokenized_length = 512
 dim = 128
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(tokenized_length, n_vocab, dim, 8)
+model = LanguageMixer(tokenized_length, n_vocab, dim, 4)
 
 
 def count_parameters(model):
@@ -160,26 +164,6 @@ count_parameters(model)
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
 
-def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
-	text_length = len(input_ids[0])
-	assert text_length > tile_overlap, 'Text must be longer than overlap to tile'
-	tiled_arr = []
-	i = 0
-	while i < text_length:
-		if i + tile_size <= text_length:
-			tiled_arr.append(input_ids[0][i:i+tile_size])
-		else:
-			# pad the last tile to the appropriate length
-			tokens = input_ids[0][i:i+tile_size]
-			pad_length = tile_size - len(tokens)
-			tokens = torch.nn.functional.pad(tokens,
-											(0, pad_length),
-											 mode='constant',
-											 value=tokenizer.pad_token_id)
-			tiled_arr.append(tokens)
-		i += tile_size - tile_overlap
-	return tiled_arr
-
 def debatch_input(input_data):
 	output = []
 	for i in range(len(input_data)):
@@ -189,7 +173,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=500000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=100000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -234,19 +218,15 @@ def reformat_inputs(train_data, test_data):
 	return train_data, test_data
 
 
-if isinstance(model, LlamaForCausalLM):
-	reformat_inputs(train_data, test_data)
-
-
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=2,
+	num_train_epochs=3,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=1000,
 	save_steps=1000,
-	learning_rate=1e-4,
+	learning_rate=5e-4,
 	evaluation_strategy='steps',
 	output_dir='~/Desktop/tinystories_complexmixer',
 	optim='adamw_torch',

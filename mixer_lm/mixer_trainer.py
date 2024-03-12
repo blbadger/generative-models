@@ -23,7 +23,7 @@ from transformers import LlamaConfig, LlamaForCausalLM
 from rotary_embedding_torch import RotaryEmbedding
 
 
-rotary_emb = RotaryEmbedding(dim = 32).to(0)
+rotary_emb = RotaryEmbedding(dim = 256).to(0)
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -287,7 +287,7 @@ mlflow.end_run()
 # )
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=2,
+	num_train_epochs=4,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=64,
 	warmup_steps=500,
@@ -296,7 +296,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_masked',
+	output_dir='~/Desktop/tinystories_mixer_masked_extension',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
@@ -306,11 +306,11 @@ trainer = transformers.Trainer(
 	train_dataset=train_data,
 	eval_dataset=test_data,
 	args=training_arguments,
-	data_collator=tran nsformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
 model.train()
-trainer.train()
+trainer.train('/home/bbadger/Desktop/tinystories_mixer_masked/checkpoint-196000')
 
 for name, param in model.named_parameters():
 	print (name)
