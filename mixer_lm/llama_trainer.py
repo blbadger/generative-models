@@ -91,7 +91,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=1000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=100000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 

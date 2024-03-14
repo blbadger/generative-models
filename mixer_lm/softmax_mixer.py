@@ -23,7 +23,7 @@ from transformers import LlamaConfig, LlamaForCausalLM
 from rotary_embedding_torch import RotaryEmbedding
 
 
-rotary_emb = RotaryEmbedding(dim = 32).to(0)
+rotary_emb = RotaryEmbedding(dim = 128).to(0)
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -33,12 +33,12 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def ConvForward(dim, expansion_factor=1):
+def ConvForward(dim, expansion_factor=0.5):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
-		nn.Conv1d(dim, inner_dim, 1),
+		nn.Conv1d(dim, inner_dim, 1, bias=False),
 		nn.GELU(),
-		nn.Conv1d(inner_dim, dim, 1)
+		nn.Conv1d(inner_dim, dim, 1, bias=False)
 		)
 
 class MixerBlock(nn.Module):
@@ -51,10 +51,11 @@ class MixerBlock(nn.Module):
 		self.length = length
 		self.patch_ff = FeedForward(dim)
 		self.expand_conv = expand_conv
+		self.softmax = nn.Softmax()
 		if self.expand_conv:
 			self.conv = ConvForward(length)
 		else:
-			self.conv = nn.Conv1d(length, length, 1)
+			self.conv = nn.Conv1d(length, length, 1, bias=False)
 		
 		# for CLM training, apply lower triangular mask to convolution weights
 		self.mixer_mask = mixer_mask
@@ -75,7 +76,7 @@ class MixerBlock(nn.Module):
 		residual = x
 		x = self.seq_layernorm(x)
 		x = rotary_emb.rotate_queries_or_keys(x)
-		x = self.conv(x) + residual
+		x = self.conv(self.softmax(x)) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -119,9 +120,10 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 512
+dim = 256
+blocks = 8
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 12).float().to(device)
+model = LanguageMixer(n_vocab, dim, blocks).float().to(device)
 
 # one = torch.tensor([[[1, 4, 3]]]).to(device)
 # two = torch.tensor([[[1, 2, 3]]]).to(device)
@@ -178,7 +180,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=100000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -209,50 +211,6 @@ def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024)
 
 	return train_data, test_data
 
-def tokenize_input(train_text, test_text):
-	train_data, test_data = [], []
-	max_length = 512
-
-	for i in range(1000000):
-		input_ids = tokenizer.encode(
-			train_text[i]['text'],
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=False,
-			max_length=max_length,
-			padding='max_length'
-		)
-
-		if len(input_ids[0]) > max_length:
-			input_set = tile_inputs(input_ids, tile_size=max_length)
-			for inp in input_set:
-				train_data.append(inp)
-		else:
-			train_data.append(input_ids)
-
-	for i in range(len(test_text)):
-		if test_text[i]:
-			input_ids = tokenizer.encode(
-				test_text[i]['text'],
-				add_special_tokens=False,
-				return_tensors='pt',
-				truncation=False,
-				max_length=max_length,
-				padding='max_length'
-			)
-
-			if len(input_ids[0]) > max_length:
-				input_set = tile_inputs(
-					input_ids,
-					tile_size=max_length
-				)
-				for inp in input_set:
-					test_data.append(inp)
-			else:
-				test_data.append(input_ids)
-
-	return train_data, test_data
-
 train_data, test_data = batch_tokenize_input(train_text, valid_text)
 train_data, test_data = debatch_input(train_data), debatch_input(test_data)
 
@@ -271,20 +229,6 @@ if isinstance(model, LlamaForCausalLM):
 
 
 mlflow.end_run()
-# training_arguments = transformers.TrainingArguments(
-# 	num_train_epochs=1,
-# 	per_device_train_batch_size=16,
-# 	per_device_eval_batch_size=32,
-# 	warmup_steps=500,
-# 	eval_steps=1000,
-# 	save_steps=1000,
-# 	learning_rate=1e-4,
-# 	fp16=True, 
-# 	evaluation_strategy='steps',
-# 	output_dir='~/Desktop/tinystories_mixer_full',
-# 	optim='adamw_torch',
-# 	overwrite_output_dir=True,
-# )
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
@@ -296,7 +240,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_masked',
+	output_dir='~/Desktop/tinystories_mixer_masked_extension',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
@@ -306,7 +250,7 @@ trainer = transformers.Trainer(
 	train_dataset=train_data,
 	eval_dataset=test_data,
 	args=training_arguments,
-	data_collator=tran nsformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
 model.train()
@@ -314,8 +258,6 @@ trainer.train()
 
 for name, param in model.named_parameters():
 	print (name)
-
-
 
 
 
