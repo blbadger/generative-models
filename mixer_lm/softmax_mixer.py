@@ -33,7 +33,7 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def ConvForward(dim, expansion_factor=0.5):
+def ConvForward(dim, expansion_factor=1):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Conv1d(dim, inner_dim, 1, bias=False),
@@ -51,7 +51,7 @@ class MixerBlock(nn.Module):
 		self.length = length
 		self.patch_ff = FeedForward(dim)
 		self.expand_conv = expand_conv
-		self.softmax = nn.Softmax()
+		self.softmax = nn.Softmax(dim=-1)
 		if self.expand_conv:
 			self.conv = ConvForward(length)
 		else:
@@ -76,7 +76,7 @@ class MixerBlock(nn.Module):
 		residual = x
 		x = self.seq_layernorm(x)
 		x = rotary_emb.rotate_queries_or_keys(x)
-		x = self.conv(self.softmax(x)) + residual
+		x = self.softmax(self.conv(x)) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -121,7 +121,7 @@ print (tokenizer.is_fast)
 
 tokenized_length = 512
 dim = 256
-blocks = 8
+blocks = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, blocks).float().to(device)
 
@@ -180,7 +180,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=100000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -231,7 +231,7 @@ if isinstance(model, LlamaForCausalLM):
 mlflow.end_run()
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=2,
+	num_train_epochs=3,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=64,
 	warmup_steps=500,
@@ -240,7 +240,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_masked_extension',
+	output_dir='~/Desktop/mixer_softmax',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
