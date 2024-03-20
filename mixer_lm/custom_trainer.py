@@ -63,21 +63,21 @@ class MixerBlock(nn.Module):
 		if self.mixer_mask:
 			if self.expand_conv:
 				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape))
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
 				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
 				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape))
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
 				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 			else:
 				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape))
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
 				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
 				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-				
+
 		residual = x
 		x = self.seq_layernorm(x)
 		x = self.conv(x) + residual
@@ -194,9 +194,9 @@ def train_model():
 			loss, output = model(batch, batch)
 			total_loss += loss.item()
 			loss.backward()
-			print (model.mixerblocks[0].conv.weight.grad[10][:10])
+			print (model.mixerblocks[0].conv[0].weight.grad[10][:10])
 			optimizer.step()
-			print (model.mixerblocks[0].conv.weight[10][:10])
+			print (model.mixerblocks[0].conv[0].weight[10][:10])
 		print ('Average loss: ', total_loss / len(batch))
 
 
