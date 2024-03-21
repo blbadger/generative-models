@@ -99,9 +99,7 @@ n_vocab = len(tokenizer)
 
 # barebones MLP mixer, expects an embedding on input tokens
 tokenized_length = 512
-dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8, mixer_mask=False).float().to(device)
 
 dim = 128
 llama_config_kwargs = {
@@ -121,29 +119,85 @@ model = LlamaForCausalLM(configuration).float()
 
 load_model(model, '/home/bbadger/Desktop/tinystories_llama_large/checkpoint-114000/model.safetensors')
 
-prompt = '''Once upon a time there was'''
+def debatch_input(input_data):
+	output = []
+	for i in range(len(input_data)):
+		if input_data[i].dim() > 1:
+			input_data[i] = input_data[i].unsqueeze(1)
+			output += list(input_data[i])
+	return output
 
-tokens = tokenizer.encode(
-				prompt,
-				add_special_tokens=False,
-				return_tensors='pt'
-			)
 
+def batch_tokenize_input(train_text, test_text, length=2000, batch_size=1024):
+	train_data, test_data = [], []
+	max_length = 512
+
+	for i in range(0, length, batch_size):
+		input_ids = tokenizer.batch_encode_plus(
+			train_text[i:i+batch_size]['text'],
+			add_special_tokens=False,
+			return_tensors='pt',
+			truncation=True,
+			max_length=max_length,
+			padding='max_length'
+		).input_ids
+		train_data.append(input_ids)
+
+	for i in range(0, len(test_text), batch_size):
+		input_ids = tokenizer.batch_encode_plus(
+			test_text[i:i+batch_size]['text'],
+			add_special_tokens=False,
+			return_tensors='pt',
+			truncation=True,
+			max_length=max_length,
+			padding='max_length'
+		).input_ids
+		test_data.append(input_ids)
+
+	train_data = debatch_input(train_data)
+	test_data = debatch_input(test_data)
+
+	return train_data, test_data
+
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer.pad_token = tokenizer.eos_token
+
+train_text = load_dataset("roneneldan/TinyStories", split="train")
+valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+
+train_data, test_data = batch_tokenize_input(train_text, valid_text)
+tokens = test_data[20][..., :-50]
+print (tokenizer.decode(tokens[0]))
+
+# prompt = '''Once upon a time, there was a lively little boy named Tim. He loved to play and run all day. One day, Tim found a big bag of oats. He believed that if he ate the oats, he would be very strong.<unk>Tim ate a lot of oats every day. He felt stronger and stronger. His friends saw him and wanted to eat oats too. They believed that they would be strong like Tim.<unk>But one day, Tim ate too many oats. His tummy hurt a lot.'''
+# tokens = tokenizer.encode(
+# 				prompt,
+# 				add_special_tokens=False,
+# 				return_tensors='pt'
+# 			)
+# string = '''Once upon a time, there was a little boy named Tim. Tim had a big, orange ball. He loved his ball very much. One day, Tim met a girl named Sue. Sue had a pretty doll. Tim liked Sue's doll, and Sue liked Tim's orange ball.<unk>Tim and Sue thought about a trade. They would trade the ball for the doll. Tim was not sure. He loved his orange ball. Sue said, "I promise to take care of your ball. You can play with it when you'''
+
+print (model(tokens[..., -50:], labels=tokens[..., -50:]).loss)
 gen = True
 if gen:
-	output = model.generate(tokens, max_new_tokens=100)
+	# tokens = tokenizer.encode(
+	# 		string,
+	# 		add_special_tokens=False,
+	# 		return_tensors='pt'
+	# 	)
+	# print (tokens)
+	output = model.generate(tokens, max_new_tokens=50)
 	output = tokenizer.decode(output[0])
 	print (output, "\n")
 
 # output = model(tokens).logits
-
 # output = torch.topk(output, dim=2, k=1).indices
 # output = output.flatten()
 # tokens = tokenizer.decode(output)
 # print (tokens)
 
 fout = []
-for i in range(20):
+for i in range(50):
 	output = model(tokens).logits[:, -1, :]
 	output_indicies = torch.topk(output, dim=-1, k=1).indices[0]
 	output_token = output_indicies[0]
@@ -152,4 +206,5 @@ for i in range(20):
 	output_token = output_token.to('cpu')
 	tokens = torch.cat((tokens, output_token.unsqueeze(0).unsqueeze(0)), dim=-1)
 
+print (model(tokens[..., -50:], labels=tokens[..., -50:]).loss)
 print (tokenizer.decode(fout))

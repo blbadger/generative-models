@@ -25,6 +25,7 @@ from rotary_embedding_torch import RotaryEmbedding
 
 rotary_emb = RotaryEmbedding(dim = 128).to(0)
 
+
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
@@ -36,10 +37,11 @@ def FeedForward(dim, expansion_factor=4):
 def ConvForward(dim, expansion_factor=1):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
-		nn.Conv1d(dim, inner_dim, 1, bias=False),
+		nn.Conv1d(dim, inner_dim, 1),
 		nn.GELU(),
-		nn.Conv1d(inner_dim, dim, 1, bias=False)
+		nn.Conv1d(inner_dim, dim, 1)
 		)
+
 
 class MixerBlock(nn.Module):
 
@@ -50,37 +52,44 @@ class MixerBlock(nn.Module):
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
-		self.expand_conv = expand_conv
-		self.softmax = nn.Softmax(dim=-1)
-		if self.expand_conv:
+		if expand_conv:
 			self.conv = ConvForward(length)
 		else:
-			self.conv = nn.Conv1d(length, length, 1, bias=False)
-		
-		# for CLM training, apply lower triangular mask to convolution weights
+			self.conv = nn.Conv1d(length, length, 1)
 		self.mixer_mask = mixer_mask
+		self.expand_conv = expand_conv
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
+
+		# for CLM training, apply lower triangular mask to convolution weights
 		if self.mixer_mask:
 			if self.expand_conv:
-				masked_conv0 = nn.Parameter(rearrange(torch.tril(rearrange(self.conv[0].weight, 'f d p -> f (d p)')), 'f (d p) -> f d p', p=1))
-				masked_conv2 = nn.Parameter(rearrange(torch.tril(rearrange(self.conv[2].weight, 'f d p -> f (d p)')), 'f (d p) -> f d p', p=1))
-				self.conv[0].weight = masked_conv0
-				self.conv[2].weight = masked_conv2
+				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
+				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
+				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
+				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
 			else:
-				self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f d p -> f (d p)'))
-				self.conv.weight = torch.nn.Parameter(torch.tril(self.conv.weight))
-				self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f (d p) -> f d p', p=1))
+				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
+				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
 		residual = x
 		x = self.seq_layernorm(x)
-		x = rotary_emb.rotate_queries_or_keys(x)
 		x = self.softmax(self.conv(x)) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
 		return x
+
 
 class LanguageMixer(nn.Module):
 
@@ -96,7 +105,7 @@ class LanguageMixer(nn.Module):
 			).to(device)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		if tie_weights:
-			self.lm_head.weight = self.wte.weight
+			 self.wte.weight = self.lm_head.weight
 		self.cel = nn.CrossEntropyLoss()
 
 	def forward(self, input_ids, labels=None):

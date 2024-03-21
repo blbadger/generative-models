@@ -20,7 +20,7 @@ from transformers import LlamaConfig, LlamaForCausalLM
 import prettytable
 from prettytable import PrettyTable
 
-
+device = 0
 dim = 128
 llama_config_kwargs = {
     'hidden_size': dim,
@@ -42,6 +42,14 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 print (model)
+
+# Causal mask check
+# model = model.to(device)
+# one = torch.tensor([[1, 2, 5]]).to(device)
+# two = torch.tensor([[1, 2, 3]]).to(device)
+# print (model(one, labels=one).logits)
+# print (model(two, labels=two).logits)
+# print (model)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -91,7 +99,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=100000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=1000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 

@@ -128,7 +128,7 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 128
+dim = 64
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
@@ -157,6 +157,9 @@ count_parameters(model)
 # cached dataset
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+print (train_text[0])
+print (train_text[1])
+print (train_text[2])
 
 def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	text_length = len(input_ids[0])
@@ -187,7 +190,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -280,37 +283,22 @@ if isinstance(model, LlamaForCausalLM):
 
 
 mlflow.end_run()
-# training_arguments = transformers.TrainingArguments(
-# 	num_train_epochs=1,
-# 	per_device_train_batch_size=16,
-# 	per_device_eval_batch_size=32,
-# 	warmup_steps=500,
-# 	eval_steps=1000,
-# 	save_steps=1000,
-# 	learning_rate=1e-4,
-# 	fp16=True, 
-# 	evaluation_strategy='steps',
-# 	output_dir='~/Desktop/tinystories_mixer_full',
-# 	optim='adamw_torch',
-# 	overwrite_output_dir=True,
-# ) 
-
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=20,
+	num_train_epochs=6,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=16,
 	warmup_steps=500,
-	eval_steps=2000,
-	save_steps=2000,
+	eval_steps=4000,
+	save_steps=4000,
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_overfit',
+	output_dir='~/Desktop/tinystories_mixer_64',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	save_safetensors=False
+	save_safetensors=True
 )
 
 trainer = transformers.Trainer(
