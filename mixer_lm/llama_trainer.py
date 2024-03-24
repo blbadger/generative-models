@@ -20,8 +20,9 @@ from transformers import LlamaConfig, LlamaForCausalLM
 import prettytable
 from prettytable import PrettyTable
 
-device = 0
-dim = 128
+device = 0 if torch.cuda.is_available else 'cpu'
+
+dim = 256
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
@@ -99,7 +100,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=1000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -197,14 +198,14 @@ mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=4,
 	per_device_train_batch_size=16,
-	per_device_eval_batch_size=32,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
-	eval_steps=1000,
-	save_steps=1000,
-	learning_rate=1e-4,
+	eval_steps=2000,
+	save_steps=2000,
+	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_llama_large',
+	output_dir='~/Desktop/tinystories_llama_256',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
@@ -216,5 +217,7 @@ trainer = transformers.Trainer(
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
+
+model = model.to(0)
 model.train()
 trainer.train()

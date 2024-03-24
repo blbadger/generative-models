@@ -20,10 +20,7 @@ from datasets import load_dataset
 import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
-from rotary_embedding_torch import RotaryEmbedding
 
-
-rotary_emb = RotaryEmbedding(dim = 256).to(0)
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -33,7 +30,7 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def ConvForward(dim, expansion_factor=1):
+def ConvForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Conv1d(dim, inner_dim, 1),
@@ -44,7 +41,7 @@ def ConvForward(dim, expansion_factor=1):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expand_conv=True):
+	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
@@ -128,7 +125,7 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 64
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
@@ -295,7 +292,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_64',
+	output_dir='~/Desktop/tinystories_mixer_1024_f_8',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

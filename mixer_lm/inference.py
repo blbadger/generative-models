@@ -40,7 +40,7 @@ def ConvForward(dim, expansion_factor=1):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expand_conv=True):
+	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
@@ -173,39 +173,42 @@ n_vocab = len(tokenizer)
 
 # barebones MLP mixer, expects an embedding on input tokens
 tokenized_length = 512
-dim = 256
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
-# load_model(model, '/home/bbadger/Desktop/tinystories_mixer/checkpoint-700000/model.safetensors')
-training_arguments = transformers.TrainingArguments(
-	num_train_epochs=0,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=1,
-	warmup_steps=0,
-	eval_steps=10,
-	save_steps=200,
-	learning_rate=2e-4,
-	fp16=True, 
-	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_0',
-	optim='adamw_torch',
-	overwrite_output_dir=True,
-	save_safetensors=False
-)
+# model.load_state_dict(torch.load('/home/bbadger/Desktop/tinystories_mixer_512_flat/checkpoint-424000/pytorch_model.bin'))
 
-trainer = transformers.Trainer(
-	model=model,
-	train_dataset=train_data,
-	eval_dataset=test_data,
-	args=training_arguments,
-	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-)
+load_model(model, '/home/bbadger/Desktop/tinystories_mixer_512_flat/checkpoint-424000/model.safetensors')
 
-# prompt = 'Once upon a time, there was a big dog named Barky. He wagged his tail and began to'
+# training_arguments = transformers.TrainingArguments(
+# 	num_train_epochs=0,
+# 	per_device_train_batch_size=16,
+# 	per_device_eval_batch_size=1,
+# 	warmup_steps=0,
+# 	eval_steps=10,
+# 	save_steps=200,
+# 	learning_rate=2e-4,
+# 	fp16=True, 
+# 	evaluation_strategy='steps',
+# 	output_dir='~/Desktop/tinystories_mixer_0',
+# 	optim='adamw_torch',
+# 	overwrite_output_dir=True,
+# 	save_safetensors=False
+# )
 
-model.train()
-trainer.train('/home/bbadger/Desktop/tinystories_mixer/checkpoint-700000')
+# trainer = transformers.Trainer(
+# 	model=model,
+# 	train_dataset=train_data,
+# 	eval_dataset=test_data,
+# 	args=training_arguments,
+# 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+# )
+
+# # prompt = 'Once upon a time, there was a big dog named Barky. He wagged his tail and began to'
+
+# model.train()
+# trainer.train('/home/bbadger/Desktop/tinystories_mixer/checkpoint-700000')
 model.eval()
 tokens = test_data[20]
 
