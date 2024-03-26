@@ -3,6 +3,9 @@ import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
+import prettytable
+from prettytable import PrettyTable
+
 import torch
 import einops
 from einops import rearrange
@@ -17,39 +20,126 @@ from datasets import load_dataset
 import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
-import prettytable
-from prettytable import PrettyTable
 
-device = 0 if torch.cuda.is_available else 'cpu'
 
-dim = 512
-llama_config_kwargs = {
-    'hidden_size': dim,
-    'intermediate_size': 4*dim,
-    'num_hidden_layers': 8,
-    'num_heads': 16,
-    'vocab_size': 4096
-}
+def FeedForward(dim, expansion_factor=4):
+	inner_dim = int(dim * expansion_factor)
+	return nn.Sequential(
+		nn.Linear(dim, inner_dim),
+		nn.GELU(),
+		nn.Linear(inner_dim, dim)
+	)
 
-# Initializing a LLaMA model
-configuration = LlamaConfig(**llama_config_kwargs)
+def ConvForward(dim, expansion_factor=4):
+	inner_dim = int(dim * expansion_factor)
+	return nn.Sequential(
+		nn.Conv1d(dim, inner_dim, 1),
+		nn.GELU(),
+		nn.Conv1d(inner_dim, dim, 1)
+		)
 
-# Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+
+class MixerBlock(nn.Module):
+
+	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
+		super().__init__()
+		self.patch_layernorm = nn.LayerNorm(dim)
+		self.seq_layernorm = nn.LayerNorm(dim)
+		self.dim = dim
+		self.length = length
+		self.patch_ff = FeedForward(dim)
+		if expand_conv:
+			self.conv = ConvForward(length)
+		else:
+			self.conv1 = nn.Conv1d(length, length, 1)
+			self.conv2  = nn.Conv1d(length,  length, 1)
+		self.mixer_mask = mixer_mask
+		self.expand_conv = expand_conv
+
+	def forward(self, x: torch.tensor):
+		if x.dim() > 3:
+			x = rearrange(x, 'b p t f -> (b p) t f')
+
+		# for CLM training, apply lower triangular mask to convolution weights
+		if self.mixer_mask:
+			if self.expand_conv:
+				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
+				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
+				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
+				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
+			else:
+				rearranged_shape = rearrange(self.conv1.weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv1.weight, 'f d p -> f (d p)') * mask
+				self.conv1.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
+				rearranged_shape = rearrange(self.conv2.weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv2.weight, 'f d p -> f (d p)') * mask
+				self.conv2.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
+
+		residual = x
+		x = self.seq_layernorm(x)
+		x = self.conv1(x) + self.conv2(x) + residual
+		residual = x
+		x = self.patch_layernorm(x)
+		x = self.patch_ff(x) + residual
+		return x
+
+
+class LanguageMixer(nn.Module):
+
+	def __init__(self, n_vocab, dim, depth, tie_weights=False):
+		super().__init__()
+		self.wte = nn.Embedding(n_vocab, dim)
+		self.mixerblocks = nn.ModuleList(
+			[MixerBlock(
+				dim = dim,
+				length = tokenized_length,
+				)
+			for i in range(depth)]
+			).to(device)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+		if tie_weights:
+			 self.wte.weight = self.lm_head.weight
+		self.cel = nn.CrossEntropyLoss()
+
+	def forward(self, input_ids, labels=None):
+		x = input_ids
+		x = x.to(device)
+		x = self.wte(x)
+		for block in self.mixerblocks:
+			x = block(x)
+		output = self.lm_head(x)
+		labels = rearrange(labels, 'b p t -> b (p t)')
+		output = rearrange(output, 'b t e -> b e t')
+		shift_logits = output[..., :-1].contiguous()
+		shift_labels = labels[..., 1:].contiguous()
+		loss = self.cel(shift_logits, shift_labels)
+		return loss, output
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
-print (model)
 
-# Causal mask check
-# model = model.to(device)
-# one = torch.tensor([[1, 2, 5]]).to(device)
-# two = torch.tensor([[1, 2, 3]]).to(device)
-# print (model(one, labels=one).logits)
-# print (model(two, labels=two).logits)
+tokenized_length = 512
+dim = 512
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+
+# one = torch.tensor([[[1, 4, 3]]]).to(device)
+# two = torch.tensor([[[1, 2, 3]]]).to(device)
+# print (model(one, labels=one))
+# print (model(two, labels=two))
 # print (model)
 
 def count_parameters(model):
@@ -68,8 +158,12 @@ def count_parameters(model):
 
 count_parameters(model)
 
+# cached dataset
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+print (train_text[0])
+print (train_text[1])
+print (train_text[2])
 
 def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	text_length = len(input_ids[0])
@@ -135,7 +229,7 @@ def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
 	max_length = 512
 
-	for i in range(500000):
+	for i in range(1000000):
 		input_ids = tokenizer.encode(
 			train_text[i]['text'],
 			add_special_tokens=False,
@@ -146,10 +240,9 @@ def tokenize_input(train_text, test_text):
 		)
 
 		if len(input_ids[0]) > max_length:
-			pass
-			# input_set = tile_inputs(input_ids, tile_size=max_length)
-			# for inp in input_set:
-			# 	train_data.append(inp)
+			input_set = tile_inputs(input_ids, tile_size=max_length)
+			for inp in input_set:
+				train_data.append(inp)
 		else:
 			train_data.append(input_ids)
 
@@ -165,23 +258,22 @@ def tokenize_input(train_text, test_text):
 			)
 
 			if len(input_ids[0]) > max_length:
-				pass
-				# input_set = tile_inputs(
-				# 	input_ids,
-				# 	tile_size=max_length
-				# )
-				# for inp in input_set:
-				# 	test_data.append(inp)
+				input_set = tile_inputs(
+					input_ids,
+					tile_size=max_length
+				)
+				for inp in input_set:
+					test_data.append(inp)
 			else:
 				test_data.append(input_ids)
 
 	return train_data, test_data
 
 train_data, test_data = batch_tokenize_input(train_text, valid_text)
-# train_data, test_data = debetach_input(train_data), debatch_input(test_data)
+train_data, test_data = debatch_input(train_data), debatch_input(test_data)
 
 def reformat_inputs(train_data, test_data):
-	# reformat inputs for transformer model
+	# reformat inputs for transformer modelz`
 	for i, _ in enumerate(train_data):
 		train_data[i] = train_data[i].flatten()
 
@@ -195,19 +287,22 @@ if isinstance(model, LlamaForCausalLM):
 
 
 mlflow.end_run()
+print ('training begun')
+
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=4,
-	per_device_train_batch_size=8,
-	per_device_eval_batch_size=8,
+	num_train_epochs=3,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=2000,
 	save_steps=2000,
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_llama_512',
+	output_dir='~/Desktop/tinystories_mixer_512_f2_n8',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
+	save_safetensors=True
 )
 
 trainer = transformers.Trainer(
@@ -218,6 +313,18 @@ trainer = transformers.Trainer(
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
-model = model.to(0)
 model.train()
 trainer.train()
+
+for name, param in model.named_parameters():
+	print (name)
+
+
+
+
+
+
+
+
+
+

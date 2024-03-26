@@ -1,7 +1,7 @@
 import os
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 import prettytable
 from prettytable import PrettyTable
@@ -20,10 +20,7 @@ from datasets import load_dataset
 import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
-from rotary_embedding_torch import RotaryEmbedding
 
-
-rotary_emb = RotaryEmbedding(dim = 128).to(0)
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -36,51 +33,60 @@ def FeedForward(dim, expansion_factor=4):
 def ConvForward(dim, expansion_factor=1):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
-		nn.Conv1d(dim, inner_dim, 1, bias=False),
+		nn.Conv1d(dim, inner_dim, 1),
 		nn.GELU(),
-		nn.Conv1d(inner_dim, dim, 1, bias=False)
+		nn.Conv1d(inner_dim, dim, 1)
 		)
+
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expand_conv=True):
+	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
-		self.expand_conv = expand_conv
-		self.softmax = nn.Softmax(dim=-1)
-		if self.expand_conv:
+		if expand_conv:
 			self.conv = ConvForward(length)
 		else:
-			self.conv = nn.Conv1d(length, length, 1, bias=False)
-		
-		# for CLM training, apply lower triangular mask to convolution weights
+			self.conv = nn.Conv1d(length, length, 1)
 		self.mixer_mask = mixer_mask
+		self.expand_conv = expand_conv
+		self.softmax = nn.Softmax(dim=-1)
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
+
+		# for CLM training, apply lower triangular mask to convolution weights
 		if self.mixer_mask:
 			if self.expand_conv:
-				masked_conv0 = nn.Parameter(rearrange(torch.tril(rearrange(self.conv[0].weight, 'f d p -> f (d p)')), 'f (d p) -> f d p', p=1))
-				masked_conv2 = nn.Parameter(rearrange(torch.tril(rearrange(self.conv[2].weight, 'f d p -> f (d p)')), 'f (d p) -> f d p', p=1))
-				self.conv[0].weight = masked_conv0
-				self.conv[2].weight = masked_conv2
+				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
+				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
+				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
+				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
 			else:
-				self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f d p -> f (d p)'))
-				self.conv.weight = torch.nn.Parameter(torch.tril(self.conv.weight))
-				self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f (d p) -> f d p', p=1))
+				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
+				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
 		residual = x
 		x = self.seq_layernorm(x)
-		x = rotary_emb.rotate_queries_or_keys(x)
 		x = self.softmax(self.conv(x)) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
 		return x
+
 
 class LanguageMixer(nn.Module):
 
@@ -96,7 +102,7 @@ class LanguageMixer(nn.Module):
 			).to(device)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		if tie_weights:
-			self.lm_head.weight = self.wte.weight
+			 self.wte.weight = self.lm_head.weight
 		self.cel = nn.CrossEntropyLoss()
 
 	def forward(self, input_ids, labels=None):
@@ -121,9 +127,8 @@ print (tokenizer.is_fast)
 
 tokenized_length = 512
 dim = 256
-blocks = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, blocks).float().to(device)
+model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
 # one = torch.tensor([[[1, 4, 3]]]).to(device)
 # two = torch.tensor([[[1, 2, 3]]]).to(device)
@@ -150,6 +155,9 @@ count_parameters(model)
 # cached dataset
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+print (train_text[0])
+print (train_text[1])
+print (train_text[2])
 
 def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	text_length = len(input_ids[0])
@@ -180,7 +188,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -211,6 +219,50 @@ def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024)
 
 	return train_data, test_data
 
+def tokenize_input(train_text, test_text):
+	train_data, test_data = [], []
+	max_length = 512
+
+	for i in range(1000000):
+		input_ids = tokenizer.encode(
+			train_text[i]['text'],
+			add_special_tokens=False,
+			return_tensors='pt',
+			truncation=False,
+			max_length=max_length,
+			padding='max_length'
+		)
+
+		if len(input_ids[0]) > max_length:
+			input_set = tile_inputs(input_ids, tile_size=max_length)
+			for inp in input_set:
+				train_data.append(inp)
+		else:
+			train_data.append(input_ids)
+
+	for i in range(len(test_text)):
+		if test_text[i]:
+			input_ids = tokenizer.encode(
+				test_text[i]['text'],
+				add_special_tokens=False,
+				return_tensors='pt',
+				truncation=False,
+				max_length=max_length,
+				padding='max_length'
+			)
+
+			if len(input_ids[0]) > max_length:
+				input_set = tile_inputs(
+					input_ids,
+					tile_size=max_length
+				)
+				for inp in input_set:
+					test_data.append(inp)
+			else:
+				test_data.append(input_ids)
+
+	return train_data, test_data
+
 train_data, test_data = batch_tokenize_input(train_text, valid_text)
 train_data, test_data = debatch_input(train_data), debatch_input(test_data)
 
@@ -229,20 +281,22 @@ if isinstance(model, LlamaForCausalLM):
 
 
 mlflow.end_run()
+print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
 	per_device_train_batch_size=16,
-	per_device_eval_batch_size=64,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=2000,
 	save_steps=2000,
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/mixer_softmax',
+	output_dir='~/Desktop/tinystories_mixer_512_f_n8_soft',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
+	save_safetensors=True
 )
 
 trainer = transformers.Trainer(
@@ -258,6 +312,8 @@ trainer.train()
 
 for name, param in model.named_parameters():
 	print (name)
+
+
 
 
 
