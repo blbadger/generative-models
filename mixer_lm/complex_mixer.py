@@ -20,13 +20,9 @@ from datasets import load_dataset
 import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
-from rotary_embedding_torch import RotaryEmbedding
 import torch.nn.functional as F
 import math
 import numpy as np
-
-
-rotary_emb = RotaryEmbedding(dim = 32).to(0)
 
 class PhaseAmplitudeGelu(nn.Module):
 	def __init__(self):
@@ -37,11 +33,24 @@ class PhaseAmplitudeGelu(nn.Module):
 
 class ComplexLayerNorm(nn.Module):
 	def __init__(self, target_dim):
-		self.target_dim = target_dim
 		super().__init__()
+		self.target_dim = target_dim
+		self.epsilon = 1e-6
 
 	def forward(self, z):
-		return F.layernorm(z.float(), self.target_dim)
+		z_mod = z.abs()
+		z_arg = z.angle()
+		expectation = torch.mean(z_mod)
+		variance = torch.var(z_mod)
+		normed_z_mod = 2 * (z_mod / expectation) / torch.sqrt(variance + self.epsilon)
+		z_normed = torch.polar(normed_z_mod, z_arg)
+		return z_normed
+
+
+lnorm = ComplexLayerNorm([1, 3])
+x = torch.tensor([[0 + 1j, 2 + 9j, -1 - 3j]])
+print (lnorm(x))
+
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -103,7 +112,7 @@ class MixerBlock(nn.Module):
 		residual = x
 		x = self.conv(x) + residual
 		residual = x
-		# x.real = self.patch_layernorm(x.real)
+		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
 		return x
 
@@ -159,7 +168,7 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 512
+dim = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(tokenized_length, n_vocab, dim, 8)
 
