@@ -22,22 +22,32 @@ from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
 from rotary_embedding_torch import RotaryEmbedding
 import torch.nn.functional as F
+import math
+import numpy as np
 
 
 rotary_emb = RotaryEmbedding(dim = 32).to(0)
 
-class PhaseAmplitudeRelu(nn.Module):
+class PhaseAmplitudeGelu(nn.Module):
 	def __init__(self):
 		super().__init__()
 
 	def forward(self, z):
-		return F.relu(torch.abs(z)) * torch.exp(1.j * torch.angle(z))
+		return F.gelu(torch.abs(z)) * torch.exp(1.j * torch.angle(z))
+
+class ComplexLayerNorm(nn.Module):
+	def __init__(self, target_dim):
+		self.target_dim = target_dim
+		super().__init__()
+
+	def forward(self, z):
+		return F.layernorm(z.float(), self.target_dim)
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Linear(dim, inner_dim).to(torch.cfloat),
-		PhaseAmplitudeRelu(),
+		PhaseAmplitudeGelu(),
 		nn.Linear(inner_dim, dim).to(torch.cfloat)
 	)
 
@@ -45,16 +55,16 @@ def ConvForward(dim, expansion_factor=1):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Conv1d(dim, inner_dim, 1).to(torch.cfloat),
-		PhaseAmplitudeRelu(),
+		PhaseAmplitudeGelu(),
 		nn.Conv1d(inner_dim, dim, 1).to(torch.cfloat)
 		)
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expand_conv=True):
+	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
 		super().__init__()
-		self.patch_layernorm = nn.LayerNorm(dim)
-		self.seq_layernorm = nn.LayerNorm(dim)
+		self.patch_layernorm = ComplexLayerNorm(dim)
+		self.seq_layernorm = ComplexLayerNorm(dim)
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
@@ -70,18 +80,27 @@ class MixerBlock(nn.Module):
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
+
+		# for CLM training, apply lower triangular mask to convolution weights
 		if self.mixer_mask:
 			if self.expand_conv:
-				masked_conv0 = nn.Parameter(rearrange(torch.tril(rearrange(self.conv[0].weight, 'f d p -> f (d p)')), 'f (d p) -> f d p', p=1))
-				masked_conv2 = nn.Parameter(rearrange(torch.tril(rearrange(self.conv[-1].weight, 'f d p -> f (d p)')), 'f (d p) -> f d p', p=1))
-				self.conv[0].weight = masked_conv0
-				self.conv[-1].weight = masked_conv2
+				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
+				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
+				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
+				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
 			else:
-				self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f d p -> f (d p)'))
-				self.conv.weight = torch.nn.Parameter(torch.tril(self.conv.weight))
-				self.conv.weight = torch.nn.Parameter(rearrange(self.conv.weight, 'f (d p) -> f d p', p=1))
+				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
+				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
 		residual = x
-		# x.real = self.seq_layernorm(x.real)
 		x = self.conv(x) + residual
 		residual = x
 		# x.real = self.patch_layernorm(x.real)
@@ -108,9 +127,10 @@ class LanguageMixer(nn.Module):
 		complex_position = complex_position.to(torch.cfloat)
 
 		# positional encoding
-		scale = 2 / tokenized_length
+		scale = 1 / tokenized_length
 		for i in range(tokenized_length):
 			complex_position[i, :] = 0 + scale*1j * i
+			# complex_position[i, :] = np.exp(2*scale*(math.pi)*i*1j)
 		self.complex_position = complex_position.to(device)
 
 	def forward(self, input_ids, labels=None):
@@ -139,9 +159,9 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 128
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(tokenized_length, n_vocab, dim, 4)
+model = LanguageMixer(tokenized_length, n_vocab, dim, 8)
 
 
 def count_parameters(model):
@@ -173,7 +193,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=100000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -220,15 +240,15 @@ def reformat_inputs(train_data, test_data):
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=3,
+	num_train_epochs=1,
 	per_device_train_batch_size=16,
-	per_device_eval_batch_size=64,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
-	eval_steps=1000,
-	save_steps=1000,
+	eval_steps=4000,
+	save_steps=4000,
 	learning_rate=5e-4,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_complexmixer',
+	output_dir='~/Desktop/tinystories_cmix_512',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=False

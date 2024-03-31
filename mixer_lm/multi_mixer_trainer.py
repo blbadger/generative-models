@@ -60,6 +60,8 @@ class MixerBlock(nn.Module):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
 
+		# TODO: try splitting activations into n slices and applying n unique convs, one per slice
+
 		# for CLM training, apply lower triangular mask to convolution weights
 		if self.mixer_mask:
 			if self.expand_conv:
