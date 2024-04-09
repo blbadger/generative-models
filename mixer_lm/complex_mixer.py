@@ -1,7 +1,7 @@
 import os
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 import prettytable
 from prettytable import PrettyTable
@@ -47,10 +47,9 @@ class ComplexLayerNorm(nn.Module):
 		return z_normed
 
 
-lnorm = ComplexLayerNorm([1, 3])
-x = torch.tensor([[0 + 1j, 2 + 9j, -1 - 3j]])
-print (lnorm(x))
-
+# lnorm = ComplexLayerNorm([1, 3])
+# x = torch.tensor([[0 + 1j, 2 + 9j, -1 - 3j]])
+# print (lnorm(x))
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -168,7 +167,7 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 16
+dim = 128
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(tokenized_length, n_vocab, dim, 8)
 
@@ -257,7 +256,7 @@ training_arguments = transformers.TrainingArguments(
 	save_steps=4000,
 	learning_rate=5e-4,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_cmix_512',
+	output_dir='~/Desktop/tinystories_cmix_128',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=False

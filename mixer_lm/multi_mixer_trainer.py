@@ -30,66 +30,48 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def ConvForward(dim, expansion_factor=4):
-	inner_dim = int(dim * expansion_factor)
-	return nn.Sequential(
-		nn.Conv1d(dim, inner_dim, 1),
-		nn.GELU(),
-		nn.Conv1d(inner_dim, dim, 1)
-		)
+
+class ParallelConvForward(nn.Module):
+
+	def __init__(self, dim, n_parallel):
+		super().__init__()
+		self.convs = torch.nn.ModuleList([nn.Conv1d(dim, dim, 1).to(device) for i in range(n_parallel)])
+
+	def forward(self, x: torch.tensor):
+		output = 0
+		for conv in self.convs:
+			output += conv(x)
+		return output
 
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
+	def __init__(self, dim, length, mixer_mask=True, parallel_convs=4):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
-		self.patch_ff = FeedForward(dim)
-		if expand_conv:
-			self.conv = ConvForward(length)
-		else:
-			self.conv1 = nn.Conv1d(length, length, 1)
-			self.conv2  = nn.Conv1d(length,  length, 1)
+		self.patch_ff = FeedForward(dim) 
+		self.parallelconvs = ParallelConvForward(length, parallel_convs)
 		self.mixer_mask = mixer_mask
-		self.expand_conv = expand_conv
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
 
 		# TODO: try splitting activations into n slices and applying n unique convs, one per slice
-
 		# for CLM training, apply lower triangular mask to convolution weights
 		if self.mixer_mask:
-			if self.expand_conv:
-				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
+			for i in range(len(self.parallelconvs.convs)):
+				rearranged_shape = rearrange(self.parallelconvs.convs[i].weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
-				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
-				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
-				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
-			else:
-				rearranged_shape = rearrange(self.conv1.weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv1.weight, 'f d p -> f (d p)') * mask
-				self.conv1.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
-				rearranged_shape = rearrange(self.conv2.weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv2.weight, 'f d p -> f (d p)') * mask
-				self.conv2.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
+				applied_mask = rearrange(self.parallelconvs.convs[i].weight, 'f d p -> f (d p)') * mask
+				self.parallelconvs.convs[i].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv1(x) + self.conv2(x) + residual
+		x = self.parallelconvs(x) + residual 
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -163,9 +145,7 @@ count_parameters(model)
 # cached dataset
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
-print (train_text[0])
-print (train_text[1])
-print (train_text[2])
+
 
 def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	text_length = len(input_ids[0])
@@ -301,7 +281,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_512_f2_n8',
+	output_dir='~/Desktop/tinystories_mixer_128_parallel',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -317,14 +297,6 @@ trainer = transformers.Trainer(
 
 model.train()
 trainer.train()
-
-for name, param in model.named_parameters():
-	print (name)
-
-
-
-
-
 
 
 
