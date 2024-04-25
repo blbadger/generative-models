@@ -30,30 +30,19 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def ConvForward(dim, expansion_factor=2):
-	inner_dim = int(dim * expansion_factor)
-	return nn.Sequential(
-		nn.Conv1d(dim, inner_dim, 1),
-		nn.GELU(),
-		nn.Conv1d(inner_dim, dim, 1)
-		)
-
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
+	def __init__(self, dim, length, mixer_mask=True):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
-		if expand_conv:
-			self.conv = ConvForward(length)
-		else:
-			self.conv = nn.Conv1d(length, length, 1)
+		self.conv = nn.Conv1d(length, length, 1)
 		self.mixer_mask = mixer_mask
-		self.expand_conv = expand_conv
+
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -61,22 +50,10 @@ class MixerBlock(nn.Module):
 
 		# for CLM training, apply lower triangular mask to convolution weights
 		if self.mixer_mask:
-			if self.expand_conv:
-				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
-				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
-				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
-				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
-			else:
-				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
-				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+			rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+			mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+			applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
+			self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
 		x = self.seq_layernorm(x)
@@ -113,9 +90,10 @@ class LanguageMixer(nn.Module):
 		output = self.lm_head(x)
 		labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
+		loss = self.cel(output, labels)
 		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous()
-		loss = self.cel(shift_logits, shift_labels)
+		loss += self.cel(shift_logits, shift_labels)
 		return loss, output
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
@@ -125,15 +103,9 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 256
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
-
-# one = torch.tensor([[[1, 4, 3]]]).to(device)
-# two = torch.tensor([[[1, 2, 3]]]).to(device)
-# print (model(one, labels=one))
-# print (model(two, labels=two))
-# print (model)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -154,7 +126,6 @@ count_parameters(model)
 # cached dataset
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
-
 
 def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	text_length = len(input_ids[0])
@@ -185,7 +156,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -216,72 +187,14 @@ def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024)
 
 	return train_data, test_data
 
-def tokenize_input(train_text, test_text):
-	train_data, test_data = [], []
-	max_length = 512
-
-	for i in range(1000000):
-		input_ids = tokenizer.encode(
-			train_text[i]['text'],
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=False,
-			max_length=max_length,
-			padding='max_length'
-		)
-
-		if len(input_ids[0]) > max_length:
-			input_set = tile_inputs(input_ids, tile_size=max_length)
-			for inp in input_set:
-				train_data.append(inp)
-		else:
-			train_data.append(input_ids)
-
-	for i in range(len(test_text)):
-		if test_text[i]:
-			input_ids = tokenizer.encode(
-				test_text[i]['text'],
-				add_special_tokens=False,
-				return_tensors='pt',
-				truncation=False,
-				max_length=max_length,
-				padding='max_length'
-			)
-
-			if len(input_ids[0]) > max_length:
-				input_set = tile_inputs(
-					input_ids,
-					tile_size=max_length
-				)
-				for inp in input_set:
-					test_data.append(inp)
-			else:
-				test_data.append(input_ids)
-
-	return train_data, test_data
-
 train_data, test_data = batch_tokenize_input(train_text, valid_text)
 train_data, test_data = debatch_input(train_data), debatch_input(test_data)
-
-def reformat_inputs(train_data, test_data):
-	# reformat inputs for transformer modelz`
-	for i, _ in enumerate(train_data):
-		train_data[i] = train_data[i].flatten()
-
-	for i, _ in enumerate(test_data):
-		test_data[i] = test_data[i].flatten()
-	return train_data, test_data
-
-
-if isinstance(model, LlamaForCausalLM):
-	reformat_inputs(train_data, test_data)
-
 
 mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=9,
+	num_train_epochs=5,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=16,
 	warmup_steps=500,
@@ -290,7 +203,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_256_f_n8',
+	output_dir='~/Desktop/tinystories_mixencode_512_f_n8',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -309,12 +222,6 @@ trainer.train()
 
 for name, param in model.named_parameters():
 	print (name)
-
-
-
-
-
-
 
 
 

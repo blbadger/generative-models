@@ -36,11 +36,12 @@ class ParallelConvForward(nn.Module):
 	def __init__(self, dim, n_parallel):
 		super().__init__()
 		self.convs = torch.nn.ModuleList([nn.Conv1d(dim, dim, 1).to(device) for i in range(n_parallel)])
+		self.gelu = nn.GELU()
 
 	def forward(self, x: torch.tensor):
 		output = 0
 		for conv in self.convs:
-			output += conv(x)
+			output += self.gelu(conv(x))
 		return output
 
 
@@ -267,7 +268,6 @@ def reformat_inputs(train_data, test_data):
 if isinstance(model, LlamaForCausalLM):
 	reformat_inputs(train_data, test_data)
 
-
 mlflow.end_run()
 print ('training begun')
 
@@ -281,7 +281,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_128_parallel',
+	output_dir='~/Desktop/tinystories_mixer_512_f4nl_n8',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

@@ -22,7 +22,7 @@ from prettytable import PrettyTable
 
 device = 0 if torch.cuda.is_available else 'cpu'
 
-dim = 512
+dim = 128
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
@@ -197,15 +197,15 @@ if isinstance(model, LlamaForCausalLM):
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=4,
-	per_device_train_batch_size=8,
-	per_device_eval_batch_size=8,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
-	eval_steps=2000,
-	save_steps=2000,
+	eval_steps=4000,
+	save_steps=4000,
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_llama_512',
+	output_dir='~/Desktop/tinystories_llama_128',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
