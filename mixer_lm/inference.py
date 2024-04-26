@@ -173,13 +173,13 @@ n_vocab = len(tokenizer)
 
 # barebones MLP mixer, expects an embedding on input tokens
 tokenized_length = 512
-dim = 1024
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
 # model.load_state_dict(torch.load('/home/bbadger/Desktop/tinystories_mixer_512_flat/checkpoint-424000/pytorch_model.bin'))
 
-load_model(model, '/home/bbadger/Desktop/tinystories_mixer_1024_f_n8_b32/checkpoint-96000/model.safetensors')
+load_model(model, '/home/bbadger/Desktop/tinystories_mixencode_512_f_n8/checkpoint-400000/model.safetensors')
 
 # training_arguments = transformers.TrainingArguments(
 # 	num_train_epochs=0,
