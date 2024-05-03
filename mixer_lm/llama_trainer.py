@@ -27,7 +27,7 @@ llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
     'num_hidden_layers': 8,
-    'num_heads': 16,
+    'num_attention_heads': 8,
     'vocab_size': 4096
 }
 
@@ -205,7 +205,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_llama_128',
+	output_dir='~/Desktop/tinystories_llama_128_n8',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )

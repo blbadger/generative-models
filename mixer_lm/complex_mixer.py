@@ -1,7 +1,7 @@
 import os
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 import prettytable
 from prettytable import PrettyTable
@@ -47,10 +47,6 @@ class ComplexLayerNorm(nn.Module):
 		return z_normed
 
 
-# lnorm = ComplexLayerNorm([1, 3])
-# x = torch.tensor([[0 + 1j, 2 + 9j, -1 - 3j]])
-# print (lnorm(x))
-
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
@@ -67,6 +63,11 @@ def ConvForward(dim, expansion_factor=1):
 		nn.Conv1d(inner_dim, dim, 1).to(torch.cfloat)
 		)
 
+def MobiusForward(dim):
+	return nn.Sequential(
+		nn.Linear(dim, dim).to(torch.cfloat)
+		)
+
 class MixerBlock(nn.Module):
 
 	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
@@ -76,6 +77,8 @@ class MixerBlock(nn.Module):
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
+		self.a_layer = nn.Linear(dim, dim).to(torch.cfloat)
+		self.b_layer = nn.Linear(dim, dim).to(torch.cfloat)
 		self.expand_conv = expand_conv
 		if self.expand_conv:
 			self.conv = ConvForward(length)
@@ -109,6 +112,7 @@ class MixerBlock(nn.Module):
 				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
+		x = self.seq_layernorm(x)
 		x = self.conv(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
@@ -167,7 +171,7 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 128
+dim = 256
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(tokenized_length, n_vocab, dim, 8)
 
@@ -237,7 +241,7 @@ train_data, test_data = batch_tokenize_input(train_text, valid_text)
 train_data, test_data = debatch_input(train_data), debatch_input(test_data)
 
 def reformat_inputs(train_data, test_data):
-	# reformat inputs for transformer modelz`
+	# reformat inputs for transformer model
 	for i, _ in enumerate(train_data):
 		train_data[i] = train_data[i].flatten()
 
@@ -248,7 +252,7 @@ def reformat_inputs(train_data, test_data):
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=1,
+	num_train_epochs=3,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=16,
 	warmup_steps=500,
@@ -256,7 +260,7 @@ training_arguments = transformers.TrainingArguments(
 	save_steps=4000,
 	learning_rate=5e-4,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_cmix_128',
+	output_dir='~/Desktop/tinystories_cmixer_256_f_n8',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=False
@@ -272,7 +276,6 @@ trainer = transformers.Trainer(
 
 model.train()
 trainer.train()
-
 
 
 
