@@ -90,10 +90,10 @@ class LanguageMixer(nn.Module):
 		output = self.lm_head(x)
 		labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
-		loss = self.cel(output, labels)
+		# loss = self.cel(output, labels)
 		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous()
-		loss += self.cel(shift_logits, shift_labels)
+		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
@@ -194,7 +194,7 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=4,
+	num_train_epochs=8,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=16,
 	warmup_steps=500,
@@ -203,7 +203,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixencode_512_f_n8',
+	output_dir='~/Desktop/tinystories_mixencode_512_f_n8_nextonly',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -218,7 +218,7 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-trainer.train()
+trainer.train('/home/bbadger/Desktop/tinystories_mixencode_512_f_n8/checkpoint-400000')
 
 for name, param in model.named_parameters():
 	print (name)
