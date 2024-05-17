@@ -90,7 +90,7 @@ class LanguageMixer(nn.Module):
 		output = self.lm_head(x)
 		labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
-		# loss = self.cel(output, labels)
+		loss = self.cel(output, labels)
 		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous()
 		loss = self.cel(shift_logits, shift_labels)

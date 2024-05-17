@@ -30,14 +30,13 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def ConvForward(dim, expansion_factor=2):
+def ConvForward(dim):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Conv1d(dim, inner_dim, 1),
 		nn.GELU(),
 		nn.Conv1d(inner_dim, dim, 1)
 		)
-
 
 class MixerBlock(nn.Module):
 
@@ -89,12 +88,12 @@ class MixerBlock(nn.Module):
 
 class LanguageMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, tie_weights=False):
+	def __init__(self, n_vocab, dim, depth, tokenized_length, batch_size, tie_weights=False):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.mixerblocks = nn.ModuleList(
 			[MixerBlock(
-				dim = dim,
+				dim = dim+1, 
 				length = tokenized_length,
 				)
 			for i in range(depth)]
@@ -103,14 +102,18 @@ class LanguageMixer(nn.Module):
 		if tie_weights:
 			 self.wte.weight = self.lm_head.weight
 		self.cel = nn.CrossEntropyLoss()
+		positions = torch.arange(-tokenized_length//2, tokenized_length//2, 1).to(device)
+		self.positional_tensor = rearrange(positions, '(s b) -> s b', b = tokenized_length).unsqueeze(0).unsqueeze(-1)
+		self.positional_tensor = self.positional_tensor.repeat(batch_size, 1, 1, 1)
 
 	def forward(self, input_ids, labels=None):
 		x = input_ids
 		x = x.to(device)
 		x = self.wte(x)
+		x = torch.cat((x, self.positional_tensor), dim=-1)
 		for block in self.mixerblocks:
 			x = block(x)
-		output = self.lm_head(x)
+		output = self.lm_head(x[..., :-1])
 		labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
 		shift_logits = output[..., :-1].contiguous()
@@ -118,22 +121,15 @@ class LanguageMixer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
-# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
-print (tokenizer.is_fast)
 
 tokenized_length = 512
 dim = 1024
+batch_size = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 16).float().to(device)
-
-# one = torch.tensor([[[1, 4, 3]]]).to(device)
-# two = torch.tensor([[[1, 2, 3]]]).to(device)
-# print (model(one, labels=one))
-# print (model(two, labels=two))
-# print (model)
+model = LanguageMixer(n_vocab, dim, 8, tokenized_length, batch_size).float().to(device)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -184,7 +180,6 @@ def debatch_input(input_data):
 			output += list(input_data[i])
 	return output
 
-
 def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
@@ -216,50 +211,6 @@ def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024)
 
 	return train_data, test_data
 
-def tokenize_input(train_text, test_text):
-	train_data, test_data = [], []
-	max_length = 512
-
-	for i in range(1000000):
-		input_ids = tokenizer.encode(
-			train_text[i]['text'],
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=False,
-			max_length=max_length,
-			padding='max_length'
-		)
-
-		if len(input_ids[0]) > max_length:
-			input_set = tile_inputs(input_ids, tile_size=max_length)
-			for inp in input_set:
-				train_data.append(inp)
-		else:
-			train_data.append(input_ids)
-
-	for i in range(len(test_text)):
-		if test_text[i]:
-			input_ids = tokenizer.encode(
-				test_text[i]['text'],
-				add_special_tokens=False,
-				return_tensors='pt',
-				truncation=False,
-				max_length=max_length,
-				padding='max_length'
-			)
-
-			if len(input_ids[0]) > max_length:
-				input_set = tile_inputs(
-					input_ids,
-					tile_size=max_length
-				)
-				for inp in input_set:
-					test_data.append(inp)
-			else:
-				test_data.append(input_ids)
-
-	return train_data, test_data
-
 train_data, test_data = batch_tokenize_input(train_text, valid_text)
 train_data, test_data = debatch_input(train_data), debatch_input(test_data)
 
@@ -281,7 +232,6 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=3,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=16,
 	warmup_steps=500,
@@ -290,7 +240,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_1024_f_n16',
+	output_dir='~/Desktop/tinystories_mixer_1024_f_n8_onepos',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

@@ -1,7 +1,7 @@
 import os
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 import prettytable
 from prettytable import PrettyTable
@@ -30,6 +30,18 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
+class MobiusForward(nn.Module):
+
+	def __init__(self, dim):
+		super().__init__()
+		self.numerator_lin = nn.Linear(dim, dim)
+		self.denominator_lin = nn.Linear(dim, dim)
+		self.numerator_const = torch.ones(dim).to(device)
+		self.denominator_const = torch.ones(dim).to(device)
+
+	def forward(self, x):
+		return (self.numerator_lin(x) + self.numerator_const) / (self.denominator_lin(x) + self.denominator_const + 100)
+
 
 class ParallelConvForward(nn.Module):
 
@@ -56,6 +68,7 @@ class MixerBlock(nn.Module):
 		self.patch_ff = FeedForward(dim) 
 		self.parallelconvs = ParallelConvForward(length, parallel_convs)
 		self.mixer_mask = mixer_mask
+		self.mobius_ff = MobiusForward(dim)
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -75,7 +88,8 @@ class MixerBlock(nn.Module):
 		x = self.parallelconvs(x) + residual 
 		residual = x
 		x = self.patch_layernorm(x)
-		x = self.patch_ff(x) + residual
+		x = self.mobius_ff(x) + residual
+		# x = self.patch_ff(x) + residual
 		return x
 
 
@@ -117,7 +131,7 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 512
+dim = 64
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
@@ -177,7 +191,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -281,7 +295,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_512_f4nl_n8',
+	output_dir='~/Desktop/tinystories_momixer_128_f_n8',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
