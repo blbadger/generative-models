@@ -1,7 +1,7 @@
 import os
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="0, 1"
 
 import prettytable
 from prettytable import PrettyTable
@@ -22,7 +22,7 @@ from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
 
 
-def FeedForward(dim, expansion_factor=1):
+def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Linear(dim, inner_dim),
@@ -63,16 +63,17 @@ class MixerBlock(nn.Module):
 		if self.mixer_mask:
 			if self.expand_conv:
 				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				mask = torch.tril(torch.ones(rearranged_shape))
 				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
 				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				mask = torch.tril(torch.ones(rearranged_shape))
 				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 			else:
+				device = self.conv.weight.device
 				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
 				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
@@ -98,7 +99,7 @@ class LanguageMixer(nn.Module):
 				length = tokenized_length,
 				)
 			for i in range(depth)]
-			).to(device)
+			)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		if tie_weights:
 			 self.wte.weight = self.lm_head.weight
@@ -106,7 +107,6 @@ class LanguageMixer(nn.Module):
 
 	def forward(self, input_ids, labels=None):
 		x = input_ids
-		x = x.to(device)
 		x = self.wte(x)
 		for block in self.mixerblocks:
 			x = block(x)
@@ -127,13 +127,7 @@ print (tokenizer.is_fast)
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8).float().to(device)
-
-# one = torch.tensor([[[1, 4, 3]]]).to(device)
-# two = torch.tensor([[[1, 2, 3]]]).to(device)
-# print (model(one, labels=one))
-# print (model(two, labels=two))
-# print (model)
+model = LanguageMixer(n_vocab, dim, 8).float()
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -154,7 +148,6 @@ count_parameters(model)
 # cached dataset
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
-
 
 def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	text_length = len(input_ids[0])
@@ -185,7 +178,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=200, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -282,7 +275,7 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=5,
-	per_device_train_batch_size=64,
+	per_device_train_batch_size=16,
 	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,

@@ -102,17 +102,21 @@ class LanguageMixer(nn.Module):
 		if tie_weights:
 			 self.wte.weight = self.lm_head.weight
 		self.cel = nn.CrossEntropyLoss()
-		positions = torch.arange(-tokenized_length//2, tokenized_length//2, 1).to(device)
-		self.positional_tensor = rearrange(positions, '(s b) -> s b', b = tokenized_length).unsqueeze(0).unsqueeze(-1)
-		self.positional_tensor = self.positional_tensor.repeat(batch_size, 1, 1, 1)
+		self.positions = torch.arange(-tokenized_length//2, tokenized_length//2, 1).to(device)
+		
 
 	def forward(self, input_ids, labels=None):
 		x = input_ids
-		x = x.to(device)
+		x = x.to(device) # [batch, 1, seq]
+		tokenized_length, batch_size = x.shape[-1], x.shape[0]
+		positional_tensor = rearrange(self.positions, '(s b) -> s b', b = tokenized_length).unsqueeze(0).unsqueeze(-1)
+		positional_tensor = positional_tensor.repeat(batch_size, 1, 1, 1)
 		x = self.wte(x)
-		x = torch.cat((x, self.positional_tensor), dim=-1)
+		x = torch.cat((x, positional_tensor), dim=-1)
+		positional_tensor = positional_tensor.squeeze(1).squeeze(-1)
 		for block in self.mixerblocks:
 			x = block(x)
+			x[..., -1] = positional_tensor
 		output = self.lm_head(x[..., :-1])
 		labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
@@ -232,6 +236,7 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
+	num_train_epochs=3,
 	per_device_train_batch_size=16,
 	per_device_eval_batch_size=16,
 	warmup_steps=500,
@@ -240,7 +245,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_1024_f_n8_onepos',
+	output_dir='~/Desktop/tinystories_mixer_1024_f_n8_allpos',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -259,13 +264,6 @@ trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-7
 
 for name, param in model.named_parameters():
 	print (name)
-
-
-
-
-
-
-
 
 
 
