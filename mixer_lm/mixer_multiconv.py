@@ -42,6 +42,7 @@ class MixerBlock(nn.Module):
 		self.patch_ff = FeedForward(dim)
 		self.conv1 = nn.Conv1d(length, length, 1)
 		self.conv2 = nn.Conv1d(length, length, 2, padding='same')
+		self.conv3 = nn.Conv1d(length, length, 3, padding='same')
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -56,9 +57,12 @@ class MixerBlock(nn.Module):
 		masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
 		self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
 
+		masked_conv3 = torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
+		self.conv3.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
+
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv1(x) + self.conv2(x) + residual
+		x = self.conv1(x) + self.conv2(x) + self.conv3(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
