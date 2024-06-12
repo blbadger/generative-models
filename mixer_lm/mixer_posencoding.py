@@ -112,12 +112,12 @@ class LanguageMixer(nn.Module):
 		positional_tensor = rearrange(self.positions, '(s b) -> s b', b = tokenized_length).unsqueeze(0).unsqueeze(-1)
 		positional_tensor = positional_tensor.repeat(batch_size, 1, 1, 1)
 		x = self.wte(x)
-		x = torch.cat((x, positional_tensor), dim=-1)
+		x = torch.cat((positional_tensor, x), dim=-1)
 		positional_tensor = positional_tensor.squeeze(1).squeeze(-1)
 		for block in self.mixerblocks:
 			x = block(x)
-			x[..., -1] = positional_tensor
-		output = self.lm_head(x[..., :-1])
+			x[..., 0] = positional_tensor
+		output = self.lm_head(x[..., 1:])
 		labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
 		shift_logits = output[..., :-1].contiguous()
@@ -189,6 +189,7 @@ def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024)
 	max_length = 512
 
 	for i in range(0, length, batch_size):
+		print (i)
 		input_ids = tokenizer.batch_encode_plus(
 			train_text[i:i+batch_size]['text'],
 			add_special_tokens=False,
@@ -245,7 +246,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_1024_f_n8_allpos',
+	output_dir='~/Desktop/tinystories_mixer_1024_f_n8_allpos_first',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

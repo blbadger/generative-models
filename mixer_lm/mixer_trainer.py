@@ -22,7 +22,7 @@ from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
 
 
-def FeedForward(dim, expansion_factor=1):
+def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Linear(dim, inner_dim),
@@ -54,6 +54,7 @@ class MixerBlock(nn.Module):
 			self.conv = nn.Conv1d(length, length, 1)
 		self.mixer_mask = mixer_mask
 		self.expand_conv = expand_conv
+		self.softmax = nn.Softmax(dim=0)
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -74,6 +75,8 @@ class MixerBlock(nn.Module):
 
 			else:
 				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+				# # softmax weights
+				# self.conv.weight.data = self.softmax(self.conv.weight.data)
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
 				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
 				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
@@ -125,7 +128,7 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 1024
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
@@ -185,7 +188,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -282,15 +285,15 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=5,
-	per_device_train_batch_size=64,
+	per_device_train_batch_size=16,
 	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=2e-4,
+	learning_rate=2e-2,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_1024_f_n8_b64_ff1',
+	output_dir='~/Desktop/tinystories_mixer_1024_sgd',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -309,10 +312,6 @@ trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-7
 
 for name, param in model.named_parameters():
 	print (name)
-
-
-
-
 
 
 
