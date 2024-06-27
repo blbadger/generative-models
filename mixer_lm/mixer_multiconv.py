@@ -1,8 +1,5 @@
 import os
 
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
 import prettytable
 from prettytable import PrettyTable
 
@@ -40,29 +37,34 @@ class MixerBlock(nn.Module):
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
-		self.conv1 = nn.Conv1d(length, length, 1)
-		self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv3 = nn.Conv1d(length, length, 3, padding='same')
+#		self.conv1 = nn.Conv1d(length, length, 1)
+#		self.conv2 = nn.Conv1d(length, length, 2, padding='same')
+		self.conv3 = nn.Conv1d(length, length, 8, padding='same')
+#		self.conv4 = nn.Conv1d(length, length, 16, padding='same')
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
 
 		# for CLM training, apply lower triangular mask to convolution weights
-		rearranged_shape = rearrange(self.conv1.weight, 'f d p -> f (d p)').shape
-		mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-		applied_mask = rearrange(self.conv1.weight, 'f d p -> f (d p)') * mask
-		self.conv1.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+#		rearranged_shape = rearrange(self.conv1.weight, 'f d p -> f (d p)').shape
+#		mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+#		applied_mask = rearrange(self.conv1.weight, 'f d p -> f (d p)') * mask
+#		self.conv1.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
-		masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
-		self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
+#		masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
+#		self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
 
 		masked_conv3 = torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
 		self.conv3.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
 
+#		masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
+#		self.conv4.weight.data = rearrange(masked_conv4, 'p f d -> f d p').contiguous()
+
+
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv1(x) + self.conv2(x) + self.conv3(x) + residual
+		x = self.conv3(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -99,7 +101,7 @@ class LanguageMixer(nn.Module):
 		return loss, output
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
@@ -107,7 +109,7 @@ print (tokenizer.is_fast)
 tokenized_length = 512
 dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+model = LanguageMixer(n_vocab, dim, 12).float().to(device)
 
 # one = torch.tensor([[[1, 2, 3]]]).to(device)
 # two = torch.tensor([[[1, 4, 3]]]).to(device)
@@ -165,11 +167,13 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=4096):
 	train_data, test_data = [], []
 	max_length = 512
 
 	for i in range(0, length, batch_size):
+		if i%10240 == 0:
+			print (i)
 		input_ids = tokenizer.batch_encode_plus(
 			train_text[i:i+batch_size]['text'],
 			add_special_tokens=False,
@@ -261,7 +265,7 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=6,
+	num_train_epochs=4,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
@@ -270,7 +274,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_512_n8_b32_c1c2',
+	output_dir='~/Desktop/tinystories_mixer_512_n12_b32_c8',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
