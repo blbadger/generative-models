@@ -30,58 +30,39 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def ConvForward(dim, expansion_factor=1):
-	inner_dim = int(dim * expansion_factor)
-	return nn.Sequential(
-		nn.Conv1d(dim, inner_dim, 1),
-		nn.GELU(),
-		nn.Conv1d(inner_dim, dim, 1)
-		)
-
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
+	def __init__(self, dim, length):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
-		if expand_conv:
-			self.conv = ConvForward(length)
-		else:
-			self.conv = nn.Conv1d(length, length, 1)
-		self.mixer_mask = mixer_mask
-		self.expand_conv = expand_conv
+		self.conv1 = nn.Conv1d(length, length, 1)
+		self.conv2 = nn.Conv1d(length, length, 2, padding='same')
+		self.conv3 = nn.Conv1d(length, length, 3, padding='same')
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
 
 		# for CLM training, apply lower triangular mask to convolution weights
-		if self.mixer_mask:
-			if self.expand_conv:
-				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape))
-				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
-				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+		rearranged_shape = rearrange(self.conv1.weight, 'f d p -> f (d p)').shape
+		mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+		applied_mask = rearrange(self.conv1.weight, 'f d p -> f (d p)') * mask
+		self.conv1.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
-				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape))
-				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
-				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+		masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
+		self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
 
-			else:
-				device = self.conv.weight.device
-				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
-				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+		masked_conv3 = torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
+		self.conv3.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv(x) + residual
+		x = self.conv1(x) + self.conv2(x) + self.conv3(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -90,7 +71,7 @@ class MixerBlock(nn.Module):
 
 class LanguageMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, tie_weights=False):
+	def __init__(self, n_vocab, dim, depth):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.mixerblocks = nn.ModuleList(
@@ -99,14 +80,13 @@ class LanguageMixer(nn.Module):
 				length = tokenized_length,
 				)
 			for i in range(depth)]
-			)
+			).to(device)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
-		if tie_weights:
-			 self.wte.weight = self.lm_head.weight
 		self.cel = nn.CrossEntropyLoss()
 
 	def forward(self, input_ids, labels=None):
 		x = input_ids
+		x = x.to(device)
 		x = self.wte(x)
 		for block in self.mixerblocks:
 			x = block(x)
@@ -125,9 +105,15 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 2048
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 6).float()
+model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+
+# one = torch.tensor([[[1, 2, 3]]]).to(device)
+# two = torch.tensor([[[1, 4, 3]]]).to(device)
+# print (model(one, labels=one))
+# print (model(two, labels=two))
+# print (model)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -148,6 +134,7 @@ count_parameters(model)
 # cached dataset
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+
 
 def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	text_length = len(input_ids[0])
@@ -178,12 +165,11 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
 	for i in range(0, length, batch_size):
-		print (i)
 		input_ids = tokenizer.batch_encode_plus(
 			train_text[i:i+batch_size]['text'],
 			add_special_tokens=False,
@@ -275,16 +261,16 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=1,
+	num_train_epochs=6,
 	per_device_train_batch_size=32,
-	per_device_eval_batch_size=16,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_trainer_test',
+	output_dir='~/Desktop/tinystories_mixer_512_n8_b32_c1c2',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -303,6 +289,8 @@ trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-7
 
 for name, param in model.named_parameters():
 	print (name)
+
+
 
 
 
