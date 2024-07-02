@@ -1,0 +1,15 @@
+artifact_uri: file:///home/bbadger/Desktop/generative-models/autoencoders/mlruns/0/8e177dfe03064ccfa777364bceb5c6ec/artifacts
+end_time: 1719868942475
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 8e177dfe03064ccfa777364bceb5c6ec
+run_name: /home/bbadger/Desktop/unet_landscapes
+run_uuid: 8e177dfe03064ccfa777364bceb5c6ec
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1719868942400
+status: 3
+tags: []
+user_id: bbadger
