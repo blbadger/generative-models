@@ -169,7 +169,7 @@ def train_autoencoder(model, dataset='churches'):
     ddp_model = DDP(model, device_ids=[device_id])
 
     optimizer = Adam(ddp_model.parameters(), lr=1e-4)
-    model.train()
+    ddp_model.train()
 
     for epoch in range(epochs):
         start_time = time.time()
@@ -183,7 +183,7 @@ def train_autoencoder(model, dataset='churches'):
                 break 
             optimizer.zero_grad()
             batch = batch.to(device_id) # discard class labels
-            output = model(batch) 
+            output = ddp_model(batch) 
             mse_loss = loss_fn(output, batch)
             total_mse_loss += mse_loss.item()
 

@@ -41,7 +41,7 @@ def ConvForward(dim, expansion_factor=1):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, mixer_mask=True, expand_conv=False):
+	def __init__(self, dim, length, clm_mask=True, expand_conv=False):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
@@ -52,7 +52,9 @@ class MixerBlock(nn.Module):
 			self.conv = ConvForward(length)
 		else:
 			self.conv = nn.Conv1d(length, length, 1)
-		self.mixer_mask = mixer_mask
+			self.convf = nn.Conv1d(length, length, 1)
+			self.convr = nn.Conv1d(length, length, 1)
+		self.clm_mask = clm_mask
 		self.expand_conv = expand_conv
 		self.softmax = nn.Softmax(dim=0)
 
@@ -61,7 +63,7 @@ class MixerBlock(nn.Module):
 			x = rearrange(x, 'b p t f -> (b p) t f')
 
 		# for CLM training, apply lower triangular mask to convolution weights
-		if self.mixer_mask:
+		if self.clm_mask:
 			if self.expand_conv:
 				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
@@ -81,9 +83,21 @@ class MixerBlock(nn.Module):
 				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
 				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
+		else:
+			# reshaped_conv = rearrange(self.conv.weight, 'f d p -> (p f) d', p=1)
+			# masked_conv = torch.diagonal_scatter(reshaped_conv, torch.zeros(self.length-1), 1)
+			# self.conv.weight.data = rearrange(masked_conv, '(p f) d -> f d p', p=1).contiguous()
+
+
+			masked_convf = torch.tril(rearrange(self.convf.weight, 'f d p -> p f d'))
+			self.convf.weight.data = rearrange(masked_convf, 'p f d -> f d p').contiguous()
+
+			masked_convr = torch.triu(rearrange(self.convr.weight, 'f d p -> p f d'), diagonal=2)
+			self.convr.weight.data = rearrange(masked_convr, 'p f d -> f d p').contiguous()
+
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv(x) + residual
+		x = self.convf(x) + self.convr(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -99,6 +113,7 @@ class LanguageMixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = tokenized_length,
+				clm_mask=False
 				)
 			for i in range(depth)]
 			).to(device)
@@ -290,10 +305,10 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=2e-2,
+	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_1024_sgd',
+	output_dir='~/Desktop/tinystories_mixer_512_n8_smask',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
