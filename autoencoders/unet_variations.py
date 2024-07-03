@@ -120,6 +120,22 @@ image_size = 128
 channels = 3
 
 model = UNet(3, 3).to(device)
+from prettytable import PrettyTable
+
+def count_parameters(model):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad:
+            continue
+        params = parameter.numel()
+        table.add_row([name, params])
+        total_params += params
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    return total_params
+    
+count_parameters(model)
 # model = UNetWide(3, 3).to(device)
 # model = UNetDeepWide(3, 3)
 # model = UNetWideHidden(3, 3).to(device)
@@ -167,7 +183,7 @@ def train_autoencoder(model, dataset='churches'):
                 break 
             optimizer.zero_grad()
             batch = batch.to(device_id) # discard class labels
-            output = ddp_model(batch) 
+            output = model(batch) 
             mse_loss = loss_fn(output, batch)
             total_mse_loss += mse_loss.item()
 
@@ -182,13 +198,6 @@ def train_autoencoder(model, dataset='churches'):
             print (f"Epoch {epoch} completed in {time.time() - start_time} seconds")
             print (f"Average Loss: {round(total_loss / step, 5)}")
             torch.save(model.state_dict(), 'wide_unet_dualloss.pth')
-            # if (total_mse_loss / step) * alpha < 1:
-            #     alpha *= 2
-
-            # if epoch % 5 == 0:
-            #     batch = next(iter(fixed_dataloader)).to(device)
-            #     gen_images = model(batch).cpu().permute(0, 2, 3, 1).detach().numpy() # torch.ones(1).to(device)
-            #     show_batch(gen_images, count=epoch//5, grayscale=False, normalize=False)
         dist.barrier()
 
     dist.destroy_process_group()
