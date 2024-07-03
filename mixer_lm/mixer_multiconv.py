@@ -39,7 +39,7 @@ class MixerBlock(nn.Module):
 		self.patch_ff = FeedForward(dim)
 #		self.conv1 = nn.Conv1d(length, length, 1)
 #		self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv3 = nn.Conv1d(length, length, 8, padding='same')
+		self.conv3 = nn.Conv1d(length, length, 6, padding='same')
 #		self.conv4 = nn.Conv1d(length, length, 16, padding='same')
 
 	def forward(self, x: torch.tensor):
@@ -107,9 +107,9 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 512
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 12).float().to(device)
+model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
 # one = torch.tensor([[[1, 2, 3]]]).to(device)
 # two = torch.tensor([[[1, 4, 3]]]).to(device)
@@ -271,10 +271,10 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=2e-4,
+	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_512_n12_b32_c8',
+	output_dir='~/Desktop/mixer_1024_n8_b32_c6_lr5',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
