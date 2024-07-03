@@ -1,8 +1,4 @@
 import os
-
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
 import torch
 import einops
 from einops import rearrange
@@ -35,8 +31,7 @@ def ConvForward(dim, expansion_factor=1):
 		nn.Conv1d(dim, inner_dim, 1),
 		nn.GELU(),
 		nn.Conv1d(inner_dim, dim, 1)
-		)
-
+	)
 
 class MixerBlock(nn.Module):
 
@@ -109,15 +104,15 @@ class LanguageMixer(nn.Module):
 		x = self.wte(x)
 		for block in self.mixerblocks:
 			x = block(x)
-		output = self.lm_head(x)
-		labels = rearrange(labels, 'b p t -> b (p t)')
-		output = rearrange(output, 'b t e -> b e t')
-		labels = labels.to(device)
-		shift_logits = output[..., :-1].contiguous()
-		shift_labels = labels[..., 1:].contiguous()
-		loss = self.cel(shift_logits[..., -100:], shift_labels[..., -100:])
-		print (loss)
-		return loss, output
+		output = x
+		# output = self.lm_head(x)
+		# labels = rearrange(labels, 'b p t -> b (p t)')
+		# output = rearrange(output, 'b t e -> b e t')
+		# labels = labels.to(device)
+		# shift_logits = output[..., :-1].contiguous()
+		# shift_labels = labels[..., 1:].contiguous()
+		# loss = self.cel(shift_logits[..., -100:], shift_labels[..., -100:])
+		return output
 
 
 class DoubleMixerBlock(nn.Module):
@@ -272,94 +267,43 @@ n_vocab = len(tokenizer)
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-bmodel = DoubleLanguageMixer(n_vocab, dim, 8).float().to(device)
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
-# model.load_state_dict(torch.load('/home/bbadger/Desktop/tinystories_mixer_512_flat/checkpoint-424000/pytorch_model.bin'))
-
-load_model(bmodel, '/home/bbadger/Desktop/tinystories_mixer_1024_n8_bmask/checkpoint-96000/model.safetensors')
 load_model(model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_1024_f_8/checkpoint-160000/model.safetensors')
 
-
-# training_arguments = transformers.TrainingArguments(
-# 	num_train_epochs=0,
-# 	per_device_train_batch_size=16,
-# 	per_device_eval_batch_size=1,
-# 	warmup_steps=0,
-# 	eval_steps=10,
-# 	save_steps=200,
-# 	learning_rate=2e-4,
-# 	fp16=True, 
-# 	evaluation_strategy='steps',
-# 	output_dir='~/Desktop/tinystories_mixer_0',
-# 	optim='adamw_torch',
-# 	overwrite_output_dir=True,
-# 	save_safetensors=False
-# )
-
-# trainer = transformers.Trainer(
-# 	model=model,
-# 	train_dataset=train_data,
-# 	eval_dataset=test_data,
-# 	args=training_arguments,
-# 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-# )
-
-# # prompt = 'Once upon a time, there was a big dog named Barky. He wagged his tail and began to'
-
-# model.train()
-# trainer.train('/home/bbadger/Desktop/tinystories_mixer/checkpoint-700000')
 model.eval()
 tokens = test_data[1]
+tokens = rearrange(tokens, '(b p) t -> b p t', p=1)
+target_emb = model(tokens, labels=tokens.to(device))
 
-prompt = '''
+text = tokenizer.decode(tokens[0][0])
+print (text)
 
-'''
-# tokens = tokenizer.encode(prompt, return_tensors='pt', padding='max_length', max_length=512)
+prompt = 'Roxy the Rhinoceros learns to climb a hill with her friend Billy.'
+# prompt = 'A little boy named Tim and a girl Sue trade a ball for a doll but it ends badly.'
+tokens = tokenizer.encode(
+	prompt,
+	add_special_tokens=False,
+	return_tensors='pt',
+	padding='max_length',
+	max_length=512
+)
 
-# tokens = tokenizer.encode(
-# 				prompt,
-# 				add_special_tokens=False,
-# 				return_tensors='pt',
-# 				padding='max_length',
-# 				max_length=512
-# 			)
-
-# print ('model loaded.')
 # print ('Input: ', tokenizer.decode(tokens[0]))
-# tokens = rearrange(tokens, '(b p) t -> b p t', p=1)
+tokens = rearrange(tokens, '(b p) t -> b p t', p=1)
+query_emb = model(tokens, labels=tokens.to(device))
 
-# fout = []
-# for i in range(50, 1, -1):
-# 	loss, output = model(tokens, labels=tokens.to(device))
-# 	out_token = torch.topk(output, dim=1, k=1).indices.flatten()[-i]
-# 	tokens[..., -i+1] = out_token
+query_emb = rearrange(query_emb, 'p h t -> (p h) t', p=1)[...,-1]
+target_emb = rearrange(target_emb, 'p h t -> (p h) t', p=1)[...,-1]
+print (target_emb.T @ query_emb)
+print (torch.norm(target_emb-query_emb, p=2))
 
-# print ('\n \n')
-# print ('Output: \n', tokenizer.decode(tokens[0][0]))
+tokens = test_data[3]
+tokens = rearrange(tokens, '(b p) t -> b p t', p=1)
+target_emb = model(tokens, labels=tokens.to(device))
 
+target_emb = rearrange(target_emb, 'p h t -> (p h) t', p=1)[...,-1]
+print ('\n')
+print (target_emb.T @ query_emb)
+print (torch.norm(target_emb-query_emb, p=2))
 
-def double_inference(tokens, start_pos=50):
-
-	print ('Full Input: ', tokenizer.decode(tokens[0]))
-	print ('Truncated Input: ', tokenizer.decode(tokens[0][:-start_pos]))
-	tokens = rearrange(tokens, '(b p) t -> b p t', p=1)
-
-	for i in range(start_pos, 1, -1):
-		loss, output = model(tokens, labels=tokens.to(device))
-		out_token = torch.topk(output, dim=1, k=1).indices.flatten()[-i]
-		tokens[..., -i+1] = out_token
-
-	print ('\n \n')
-	print ('Output: \n', tokenizer.decode(tokens[0][0]))
-
-	for i in range(2, start_pos, 1):
-		loss, output = bmodel(tokens, labels=tokens.to(device), fonly=False)
-		out_token = torch.topk(output, dim=1, k=1).indices.flatten()[-i]
-		tokens[..., -i+1] = out_token
-
-	print ('\n \n')
-	print ('Output: \n', tokenizer.decode(tokens[0][0]))
-
-
-double_inference(tokens)

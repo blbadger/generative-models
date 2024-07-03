@@ -115,11 +115,27 @@ def show_batch(input_batch, count=0, grayscale=False, normalize=True):
     plt.close()
     return 
 
-batch_size = 4
+batch_size = 8
 image_size = 128
 channels = 3
 
 model = UNet(3, 3).to(device)
+from prettytable import PrettyTable
+
+def count_parameters(model):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad:
+            continue
+        params = parameter.numel()
+        table.add_row([name, params])
+        total_params += params
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    return total_params
+    
+count_parameters(model)
 # model = UNetWide(3, 3).to(device)
 # model = UNetDeepWide(3, 3)
 # model = UNetWideHidden(3, 3).to(device)
@@ -130,36 +146,36 @@ def train_autoencoder(model, dataset='churches'):
     epochs = 500
     alpha = 1
     gpu_count = torch.cuda.device_count()
+    dist.init_process_group("nccl")
+    rank = dist.get_rank()
+
+    if dataset == 'churches':
+        path = pathlib.Path('/home/bbadger/Downloads/church_outdoor_train_lmdb_color_64.npy', fname='Combined')
+        dataset = npy_loader(path)
+        dset = torch.utils.data.TensorDataset(dataset)
+        start = (len(dset) // gpu_count) * rank
+        end = start + (len(dset) // gpu_count)
+        dataloader = torch.utils.data.DataLoader(dataset[start:end], batch_size=batch_size, shuffle=True)
+
+    # landscapes dataset load
+    else:  
+        data_dir = pathlib.Path('/home/bbadger/Downloads/landscapes', fname='Combined')
+        train_data = ImageDataset(data_dir, rank, image_type='.jpg')
+        dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+
+    # create model and move it to GPU with id rank
+    device_id = rank % torch.cuda.device_count()
+    model = model.to(device_id)
+    ddp_model = DDP(model, device_ids=[device_id])
+
+    optimizer = Adam(ddp_model.parameters(), lr=1e-4)
+    ddp_model.train()
+
     for epoch in range(epochs):
         start_time = time.time()
         total_loss = 0
         total_mse_loss = 0
-
-        dist.init_process_group("nccl")
-        rank = dist.get_rank()
-        print(f"Start running basic DDP example on rank {rank}.")
-
-        if dataset == 'churches':
-            path = pathlib.Path('/home/bbadger/Downloads/church_outdoor_train_lmdb_color_64.npy', fname='Combined')
-            dataset = npy_loader(path)
-            dset = torch.utils.data.TensorDataset(dataset)
-            start = (len(dset) // gpu_count) * rank
-            end = start + (len(dset) // gpu_count)
-            dataloader = torch.utils.data.DataLoader(dataset[start:end], batch_size=batch_size, shuffle=True)
-
-        # landscapes dataset load
-        else:  
-            data_dir = pathlib.Path('/home/bbadger/Downloads/landscapes', fname='Combined')
-            train_data = ImageDataset(data_dir, rank, image_type='.jpg')
-            dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-
-        # create model and move it to GPU with id rank
-        device_id = rank % torch.cuda.device_count()
-        model = model.to(device_id)
-        ddp_model = DDP(model, device_ids=[device_id])
-
-        optimizer = Adam(ddp_model.parameters(), lr=1e-4)
-        model.train()
+        
         for step, batch in enumerate(dataloader):
             if step % 10 == 0:
                 print (step)
@@ -167,36 +183,30 @@ def train_autoencoder(model, dataset='churches'):
                 break 
             optimizer.zero_grad()
             batch = batch.to(device_id) # discard class labels
-            output = model(batch) 
+            output = ddp_model(batch) 
             mse_loss = loss_fn(output, batch)
-            # total_mse_loss += mse_loss
+            total_mse_loss += mse_loss.item()
 
-            loss = (alpha * loss_fn(output, batch)) - cosine_loss(output.flatten(), batch.flatten())
-            # total_loss += loss.item()
+            loss = (alpha * loss_fn(output, batch)) # - cosine_loss(output.flatten(), batch.flatten())
+            total_loss += loss.item()
             loss.backward()
             optimizer.step()
 
         if rank == 0:
-            checkpoint_path = '/home/bbadger/Desktop/lsun_churches'
-            torch.save(model.state_dict(), checkpoint_path)
-                # print (f"Epoch {epoch} completed in {time.time() - start_time} seconds")
-                # print (f"Average Loss: {round(total_loss / step, 5)}")
-                # torch.save(model.state_dict(), 'wide_unet_dualloss.pth')
-                # if (total_mse_loss / step) * alpha < 1:
-                #     alpha *= 2
+            checkpoint_path = '/home/bbadger/Desktop/model_checkpoints'
+            torch.save(ddp_model.state_dict(), checkpoint_path)
+            print (f"Epoch {epoch} completed in {time.time() - start_time} seconds")
+            print (f"Average Loss: {round(total_loss / step, 5)}")
+            torch.save(model.state_dict(), 'wide_unet_dualloss.pth')
+        dist.barrier()
 
-                # if epoch % 5 == 0:
-                #     batch = next(iter(fixed_dataloader)).to(device)
-                #     gen_images = model(batch).cpu().permute(0, 2, 3, 1).detach().numpy() # torch.ones(1).to(device)
-                #     show_batch(gen_images, count=epoch//5, grayscale=False, normalize=False)
-
-        dist.destroy_process_group()
+    dist.destroy_process_group()
  
 
 if __name__ == '__main__':
     train_autoencoder(model, dataset='landscapes')
 
-batch = next(iter(dataloader)).cpu().permute(0, 2, 3, 1).detach().numpy()
+# batch = next(iter(dataloader)).cpu().permute(0, 2, 3, 1).detach().numpy()
 # model.load_state_dict(torch.load('wide_unet_dualloss.pth'))
 # train_autoencoder(model, rank, world_size)
 
