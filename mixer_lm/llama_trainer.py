@@ -1,7 +1,7 @@
 import os
 
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+#os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+#os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 import torch
 import einops
@@ -38,7 +38,7 @@ configuration = LlamaConfig(**llama_config_kwargs)
 model = LlamaForCausalLM(configuration).float()
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
@@ -197,15 +197,15 @@ if isinstance(model, LlamaForCausalLM):
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=4,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=2e-4, 
+	learning_rate=5e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_llamamix_512_n8_h4_b16',
+	output_dir='~/Desktop/llama_b32_512_h4_n8_lr5',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
