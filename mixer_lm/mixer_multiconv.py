@@ -42,7 +42,7 @@ class MixerBlock(nn.Module):
 		self.patch_ff = FeedForward(dim)
 		# self.conv1 = nn.Conv1d(length, length, 1)
 		# self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv3 = nn.Conv1d(length, length, 4, padding='same')
+		self.conv3 = nn.Conv1d(length, length, 2, padding='same')
 		# self.conv4 = nn.Conv1d(length, length, 4, padding='same')
 
 	def forward(self, x: torch.tensor):
@@ -57,8 +57,9 @@ class MixerBlock(nn.Module):
 
 		# masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
 		# self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
-
+		print (self.conv3.weight.shape)
 		masked_conv3 = torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
+		print (masked_conv3.shape)
 		self.conv3.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
 
 		# masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
@@ -170,7 +171,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
