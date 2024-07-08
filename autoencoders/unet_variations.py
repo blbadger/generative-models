@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from einops import rearrange
 from unet_noresiduals import UNet_hidden, UNetWide, UNetDeep, UNetDeepWide, UNetWideHidden, UNet
-
+from tqdm import tqdm
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -113,13 +113,13 @@ def show_batch(input_batch, count=0, grayscale=False, normalize=True):
     plt.savefig('image{0:04d}.png'.format(count), dpi=300, transparent=True)
     print ('Image Saved')
     plt.close()
-    return 
+    return
 
-batch_size = 8
-image_size = 128
+batch_size = 256
+image_size = 64
 channels = 3
 
-model = UNet(3, 3).to(device)
+model = UNet(3, 3)
 from prettytable import PrettyTable
 
 def count_parameters(model):
@@ -134,7 +134,7 @@ def count_parameters(model):
     print(table)
     print(f"Total Trainable Params: {total_params}")
     return total_params
-    
+
 count_parameters(model)
 # model = UNetWide(3, 3).to(device)
 # model = UNetDeepWide(3, 3)
@@ -150,7 +150,7 @@ def train_autoencoder(model, dataset='churches'):
     rank = dist.get_rank()
 
     if dataset == 'churches':
-        path = pathlib.Path('/home/bbadger/Downloads/church_outdoor_train_lmdb_color_64.npy', fname='Combined')
+        path = pathlib.Path('/home/bbadger/Desktop/church_outdoor_train_lmdb_color_64.npy', fname='Combined')
         dataset = npy_loader(path)
         dset = torch.utils.data.TensorDataset(dataset)
         start = (len(dset) // gpu_count) * rank
@@ -159,7 +159,7 @@ def train_autoencoder(model, dataset='churches'):
 
     # landscapes dataset load
     else:  
-        data_dir = pathlib.Path('/home/bbadger/Downloads/landscapes', fname='Combined')
+        data_dir = pathlib.Path('/home/bbadger/Desktop/landscapes', fname='Combined')
         train_data = ImageDataset(data_dir, rank, image_type='.jpg')
         dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
@@ -171,14 +171,12 @@ def train_autoencoder(model, dataset='churches'):
     optimizer = Adam(ddp_model.parameters(), lr=1e-4)
     ddp_model.train()
 
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs)):
         start_time = time.time()
         total_loss = 0
         total_mse_loss = 0
         
         for step, batch in enumerate(dataloader):
-            if step % 10 == 0:
-                print (step)
             if len(batch) < batch_size:
                 break 
             optimizer.zero_grad()
@@ -193,18 +191,17 @@ def train_autoencoder(model, dataset='churches'):
             optimizer.step()
 
         if rank == 0:
-            checkpoint_path = '/home/bbadger/Desktop/model_checkpoints'
+            checkpoint_path = f'/home/bbadger/Desktop/churches_unet/{epoch}'
             torch.save(ddp_model.state_dict(), checkpoint_path)
             print (f"Epoch {epoch} completed in {time.time() - start_time} seconds")
             print (f"Average Loss: {round(total_loss / step, 5)}")
-            torch.save(model.state_dict(), 'wide_unet_dualloss.pth')
         dist.barrier()
 
     dist.destroy_process_group()
  
 
 if __name__ == '__main__':
-    train_autoencoder(model, dataset='landscapes')
+    train_autoencoder(model, dataset='churches')
 
 # batch = next(iter(dataloader)).cpu().permute(0, 2, 3, 1).detach().numpy()
 # model.load_state_dict(torch.load('wide_unet_dualloss.pth'))
