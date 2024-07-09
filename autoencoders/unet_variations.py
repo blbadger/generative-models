@@ -268,7 +268,7 @@ def observe_denoising(alpha):
     print (f'L2 Distance on the Input after Gaussian Noise: {input_distance}')
     print (f'L2 Distance on the Autoencoder Output after Gaussian Noise: {output_distance}')
 
-alpha = 0.1
+alpha = 0.9
 observe_denoising(alpha)
 
 @torch.no_grad()
