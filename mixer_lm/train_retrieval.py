@@ -15,7 +15,8 @@ from tokenizers import ByteLevelBPETokenizer
 from transformers import AutoModel
 from safetensors.torch import load_model, save_model, load_file
 import json
-
+import numpy as np
+import random
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -117,17 +118,15 @@ class BidirectionalMixerBlock(nn.Module):
 		self.length = length
 		self.patch_ff = FeedForward(dim)
 		self.conv = nn.Conv1d(length, length, 1)
-		self.mixer_mask = mixer_mask
-		self.expand_conv = expand_conv
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
 
-		rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
-		mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-		applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
-		self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+		# rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+		# mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+		# applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
+		# self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
 		x = self.seq_layernorm(x)
@@ -157,6 +156,7 @@ class RetrievalMixer(nn.Module):
 		# labels have dim (input_ids-1) and are one-hot
 		x = input_ids
 		x = x.to(device)
+		print(x.shape)
 		for block in self.mixerblocks:
 			x = block(x)
 		output = self.retrieval_head(x)
@@ -175,20 +175,31 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, batch_size=1024, start=0, end=60000):
+def batch_tokenize_input(train_text, batch_size=128, start=0, end=60000):
 	train_data, test_data = [], []
 	max_length = 512
 
 	for i in range(start, end, batch_size):
-		input_ids = tokenizer.batch_encode_plus(
-			train_text[i:i+batch_size]['text'],
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=True,
-			max_length=max_length,
-			padding='max_length'
-		).input_ids
-		train_data.append(input_ids)
+		if isinstance(train_text[0], dict):
+			input_ids = tokenizer.batch_encode_plus(
+				train_text[i:i+batch_size]['text'],
+				add_special_tokens=False,
+				return_tensors='pt',
+				truncation=True,
+				max_length=max_length,
+				padding='max_length'
+			).input_ids
+			train_data.append(input_ids)
+		else:
+			input_ids = tokenizer.batch_encode_plus(
+				train_text[i:i+batch_size],
+				add_special_tokens=False,
+				return_tensors='pt',
+				truncation=True,
+				max_length=max_length,
+				padding='max_length'
+			).input_ids
+			train_data.append(input_ids)
 
 	train_data = debatch_input(train_data)
 	return train_data
@@ -201,7 +212,7 @@ def embed_input(input_tokens):
 			print (i)
 		last_hidden_layers = gen_model(
 			input_tokens[i]
-		).detach().to('cpu')
+		)[..., -2, :].detach().to('cpu')
 		# expects the model's output to be the last hidden layer
 		embeddings.append(last_hidden_layers)
 
@@ -213,8 +224,8 @@ tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 
 train_text, test_text = load_dataset("roneneldan/TinyStories", split="train"), load_dataset("roneneldan/TinyStories", split="train")
-train_data = batch_tokenize_input(train_text, start=0, end=1000)
-test_data = batch_tokenize_input(train_text, start=1000, end=1500)
+train_data = batch_tokenize_input(train_text, start=0, end=10)
+test_data = batch_tokenize_input(train_text, start=10, end=15)
 n_vocab = len(tokenizer)
 
 # generative model initialization
@@ -227,27 +238,39 @@ gen_model.eval()
 target_train = embed_input(train_data)
 target_test = embed_input(test_data)
 
-query_text = [i['choices'][0]['message'] for i in json.load(open('/home/bbadger/Desktop/train_output_60k.json'))]
-query_train, test_query = batch_embed_input(query_text[:50000], query_text[50000:60000])
+query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60k.json'))]
+query_train_data = batch_tokenize_input(query_text, start=0, end=10)
+query_test_data = batch_tokenize_input(query_text, start=10, end=15)
+query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=5):
 	inputs = []
 	for m in range(multiples):
-		print (m)
-		for i, query in query_embeddings:
-			input = np.zeros(n_context)
-			input[0] = query
-			exlusive_target = query_embeddings[:i] + target_embeddings[i+1:]
-			input[1:] = np.random.choice(exclusive_target, shape=n_context-1, replace=False)
-			target_index = random.randint(1, n_context)
+		print ('multiple: ', m)
+		for i, query in enumerate(query_embeddings):
+			input = torch.zeros((n_context, query_embeddings[0].shape[1]))
+			input[0].data = query.data
+			exclusive_target = target_embeddings[:i] + target_embeddings[i+1:]
+			random_insert = random.sample(exclusive_target, k=n_context-1)
+			random_insert = torch.stack(random_insert, dim=0)
+			input[1:].data = random_insert
+
+			target_index = random.randint(1, n_context-1)
+			matching_target = target_embeddings[i]
 			input[target_index] = matching_target
+
 			labels = torch.zeros(n_context)
 			labels[target_index] = 1.
 			labels[0] = 1.
+
 			inputs.append(input)
 	return inputs
 
+n_context = 5
 retrieval_dataset = generate_retrieval_dataset(query_train, target_train, n_context)
+
+# initialize retrieval model
+retrieval_model = RetrievalMixer(1024, 4)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
@@ -267,15 +290,15 @@ training_arguments = transformers.TrainingArguments(
 )
 
 trainer = transformers.Trainer(
-	model=model,
-	train_dataset=train_data,
+	model=retrieval_model,
+	train_dataset=retrieval_dataset,
 	eval_dataset=test_data,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
-model.train()
-trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'
+retrieval_model.train()
+trainer.train()
 
 for name, param in model.named_parameters():
 	print (name)
