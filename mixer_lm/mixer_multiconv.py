@@ -1,5 +1,8 @@
 import os
 
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
 import prettytable
 from prettytable import PrettyTable
 
@@ -39,7 +42,7 @@ class MixerBlock(nn.Module):
 		self.patch_ff = FeedForward(dim)
 		# self.conv1 = nn.Conv1d(length, length, 1)
 		# self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv3 = nn.Conv1d(length, length, 4, padding='same')
+		self.conv3 = nn.Conv1d(length, length, 2, padding='same')
 		# self.conv4 = nn.Conv1d(length, length, 4, padding='same')
 
 	def forward(self, x: torch.tensor):
@@ -47,21 +50,19 @@ class MixerBlock(nn.Module):
 			x = rearrange(x, 'b p t f -> (b p) t f')
 
 		# for CLM training, apply lower triangular mask to convolution weights
+		# rearranged_shape = rearrange(self.conv1.weight, 'f d p -> f (d p)').shape
+		# mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+		# applied_mask = rearrange(self.conv1.weight, 'f d p -> f (d p)') * mask
+		# self.conv1.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
-#		rearranged_shape = rearrange(self.conv1.weight, 'f d p -> f (d p)').shape
-#		mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-#		applied_mask = rearrange(self.conv1.weight, 'f d p -> f (d p)') * mask
-#		self.conv1.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
-#		masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
-#		self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
+		# masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
+		# self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
 
 		masked_conv3 = torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
 		self.conv3.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
 
-#		masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
-#		self.conv4.weight.data = rearrange(masked_conv4, 'p f d -> f d p').contiguous()
-
+		# masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
+		# self.conv4.weight.data = rearrange(masked_conv4, 'p f d -> f d p').contiguous()
 
 		residual = x
 		x = self.seq_layernorm(x)
@@ -100,10 +101,11 @@ class LanguageMixer(nn.Module):
 		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous()
 		loss = self.cel(shift_logits, shift_labels)
+		print (loss)
 		return loss, output
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
@@ -168,14 +170,11 @@ def debatch_input(input_data):
 			output += list(input_data[i])
 	return output
 
-
 def batch_tokenize_input(train_text, test_text, length=20000, batch_size=4096):
 	train_data, test_data = [], []
 	max_length = 512
 
 	for i in range(0, length, batch_size):
-		if i%10240 == 0:
-			print (i)
 		input_ids = tokenizer.batch_encode_plus(
 			train_text[i:i+batch_size]['text'],
 			add_special_tokens=False,
@@ -276,7 +275,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/mixer_1024_n8_b32_c6_lr5',
+	output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_c4_e5',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -295,12 +294,4 @@ trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-7
 
 for name, param in model.named_parameters():
 	print (name)
-
-
-
-
-
-
-
-
 
