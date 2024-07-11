@@ -226,8 +226,9 @@ tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 
 train_text, test_text = load_dataset("roneneldan/TinyStories", split="train"), load_dataset("roneneldan/TinyStories", split="train")
-train_data = batch_tokenize_input(train_text, start=0, end=1000)
-test_data = batch_tokenize_input(train_text, start=1000, end=2000)
+
+train_data = batch_tokenize_input(train_text, start=0, end=5000)
+test_data = batch_tokenize_input(train_text, start=5000, end=6000)
 n_vocab = len(tokenizer)
 
 # generative model initialization
@@ -241,11 +242,11 @@ target_train = embed_input(train_data)
 target_test = embed_input(test_data)
 
 query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60k.json'))]
-query_train_data = batch_tokenize_input(query_text, start=0, end=1000)
-query_test_data = batch_tokenize_input(query_text, start=1000, end=2000)
+query_train_data = batch_tokenize_input(query_text, start=0, end=5000)
+query_test_data = batch_tokenize_input(query_text, start=5000, end=6000)
 query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 
-def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=5):
+def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=2):
 	inputs = []
 	for m in range(multiples):
 		print ('multiple: ', m)
@@ -260,17 +261,14 @@ def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, m
 			target_index = random.randint(1, n_context-1)
 			matching_target = target_embeddings[i]
 			input[target_index] = matching_target - 1 # first output is dropped
-
-			# labels = torch.zeros(n_context)
-			# labels[target_index] = 1.
-			# labels[0] = 1.
 			labels = torch.tensor(target_index-1, dtype=torch.long)
 
 			inputs.append({'input_ids': input, 'labels': labels})
 	return inputs
 
 n_context = 512
-retrieval_dataset = generate_retrieval_dataset(query_train, target_train, n_context)
+retrieval_train_dataset = generate_retrieval_dataset(query_train, target_train, n_context)
+retrieval_test_dataset = generate_retrieval_dataset(query_test, target_test, n_context)
 
 # initialize retrieval model
 retrieval_model = RetrievalMixer(1024, 4)
@@ -294,10 +292,9 @@ training_arguments = transformers.TrainingArguments(
 
 trainer = transformers.Trainer(
 	model=retrieval_model,
-	train_dataset=retrieval_dataset,
-	eval_dataset=test_data,
-	args=training_arguments,
-	# data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+	train_dataset=retrieval_train_dataset,
+	eval_dataset=retrieval_test_dataset,
+	args=training_arguments
 )
 
 retrieval_model.train()
