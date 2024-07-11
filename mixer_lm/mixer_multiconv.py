@@ -113,7 +113,7 @@ print (tokenizer.is_fast)
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+model = LanguageMixer(n_vocab, dim, 8)
 
 # one = torch.tensor([[[1, 2, 3]]]).to(device)
 # two = torch.tensor([[[1, 4, 3]]]).to(device)
@@ -170,8 +170,7 @@ def debatch_input(input_data):
 			output += list(input_data[i])
 	return output
 
-
-def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=20000, batch_size=4096):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -295,12 +294,4 @@ trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-7
 
 for name, param in model.named_parameters():
 	print (name)
-
-
-
-
-
-
-
-
 
