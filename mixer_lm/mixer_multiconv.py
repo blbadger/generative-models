@@ -57,9 +57,8 @@ class MixerBlock(nn.Module):
 
 		# masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
 		# self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
-		print (self.conv3.weight.shape)
+
 		masked_conv3 = torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
-		print (masked_conv3.shape)
 		self.conv3.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
 
 		# masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
@@ -102,6 +101,7 @@ class LanguageMixer(nn.Module):
 		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous()
 		loss = self.cel(shift_logits, shift_labels)
+		print (loss)
 		return loss, output
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
