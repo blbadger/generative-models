@@ -30,6 +30,40 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
+class MixerHead(nn.Module):
+
+	def __init__(self, dim, length, hidden_dim, n_heads):
+		self.proj_head = nn.ModuleList(
+			[nn.linear(dim, hidden_dim)
+			for i in range(n_heads)]
+			).to(device)
+
+		self.convs = nn.ModuleList(
+			[nn.Conv1d(length, length, 1)
+			for i in range(n_heads)]
+			)
+
+		self.out_proj = nn.ModuleList(
+			[nn.linear(hidden_dim, dim)
+			for i in range(n_heads)]
+			).to(device)
+
+	def forward(self, x: torch.tensor):
+
+		for i in range(len(self.convs)):
+			masked_conv = torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d'))
+			self.convs[i].weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
+
+		hidden_layer = torch.tensor()
+
+		for head in self.heads:
+			projection = self.proj_head[i](x)
+			conv_projection = self.conv[i](x)
+			torch.cat(hidden_layer, self.out_proj[i](x))
+
+		# concatenate and project multi-headed output
+		hidden_layer = self.out_proj(hidden_layer)
+		return hidden_layer
 
 class MixerBlock(nn.Module):
 
@@ -42,7 +76,7 @@ class MixerBlock(nn.Module):
 		self.patch_ff = FeedForward(dim)
 		# self.conv1 = nn.Conv1d(length, length, 1)
 		# self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv3 = nn.Conv1d(length, length, 2, padding='same')
+		self.conv = nn.Conv1d(length, length, 2, padding='same')
 		# self.conv4 = nn.Conv1d(length, length, 4, padding='same')
 
 	def forward(self, x: torch.tensor):
@@ -59,14 +93,14 @@ class MixerBlock(nn.Module):
 		# self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
 
 		masked_conv3 = torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
-		self.conv3.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
+		self.conv.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
 
 		# masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
 		# self.conv4.weight.data = rearrange(masked_conv4, 'p f d -> f d p').contiguous()
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv3(x) + residual
+		x = self.conv(x) + residual
 
 		residual = x
 		x = self.patch_layernorm(x)

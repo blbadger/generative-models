@@ -23,6 +23,8 @@ import json
 import numpy as np
 import random
 from datasets import Dataset
+from transformers import LlamaConfig, LlamaForCausalLM
+
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -141,13 +143,14 @@ class RetrievalMixer(nn.Module):
 
 	def __init__(self, dim, depth, n_samples):
 		super().__init__()
+		self.wte = nn.Embedding(n_vocab, dim)
 		self.mixerblocks = nn.ModuleList(
 			[BidirectionalMixerBlock(
 				dim = dim,
 				length = n_samples,
 				)
 			for i in range(depth)]
-			).to(device)
+			).to(0)
 		self.retrieval_head = nn.Linear(dim, 1, bias=False)
 		self.cel = nn.CrossEntropyLoss()
 
@@ -155,7 +158,7 @@ class RetrievalMixer(nn.Module):
 		# input_ids shape: [query_emb, target_emb_1, target_emb_2,...]
 		# labels have dim (input_ids-1) and are one-hot
 		x = input_ids
-		x = x.to(device)
+		x = x.to(0)
 		for block in self.mixerblocks:
 			x = block(x)
 		output = self.retrieval_head(x)
@@ -164,7 +167,6 @@ class RetrievalMixer(nn.Module):
 		# target_output = torch.squeeze(target_output, dim=-1)
 		labels = torch.unsqueeze(labels, 1)
 		loss = self.cel(target_output, labels) # compare predicted to actual match
-		# print (labels, torch.argmax(target_output, dim=1))
 		return loss, output
 
 
@@ -212,9 +214,11 @@ def embed_input(input_tokens):
 	for i in range(0, len(input_tokens)):
 		if i % 100 == 0:
 			print (i)
-		last_hidden_layers = gen_model(
-			input_tokens[i]
-		)[..., -2, :].detach().to('cpu')
+		output = gen_model(
+			input_tokens[i].to(0),
+			output_hidden_states=True
+		)
+		last_hidden_layers = output.hidden_states[-1][..., -1, :].detach().to('cpu')
 		# expects the model's output to be the last hidden layer
 		embeddings.append(last_hidden_layers)
 
@@ -232,11 +236,22 @@ test_data = batch_tokenize_input(train_text, start=2000, end=4000)
 n_vocab = len(tokenizer)
 
 # generative model initialization
-tokenized_length = 512
-dim = 1024
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-gen_model = LanguageMixer(n_vocab, dim, 8).float().to(device)
-load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_1024_f_8/checkpoint-160000/model.safetensors')
+dim = 512
+llama_config_kwargs = {
+    'hidden_size': dim,
+    'intermediate_size': 4*dim,
+    'num_hidden_layers': 8,
+    'num_heads': 4,
+    'vocab_size': 4096
+}
+
+# Initializing a LLaMA model
+configuration = LlamaConfig(**llama_config_kwargs)
+
+# Initializing a model from the llama-7b style configuration
+gen_model = LlamaForCausalLM(configuration).float().to(0)
+
+load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_llama_512_h4/checkpoint-188000/model.safetensors')
 gen_model.eval()
 target_train = embed_input(train_data)
 target_test = embed_input(test_data)
@@ -246,12 +261,11 @@ query_train_data = batch_tokenize_input(query_text, start=0, end=2000)
 query_test_data = batch_tokenize_input(query_text, start=2000, end=4000)
 query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 
-def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
+def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=2):
 	inputs = []
 	for m in range(multiples):
 		print ('multiple: ', m)
 		for i, query in enumerate(query_embeddings):
-			print (query_embeddings[0].shape)
 			input = torch.zeros((n_context, query_embeddings[0].shape[1]))
 			input[0] = query
 			exclusive_target = target_embeddings[:i] + target_embeddings[i+1:]
@@ -261,7 +275,8 @@ def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, m
 
 			target_index = random.randint(1, n_context-1)
 			matching_target = target_embeddings[i]
-			input[target_index] = matching_target
+			input[target_index] = matching_target # first output is dropped
+			print (input[target_index])
 			labels = torch.tensor(target_index-1, dtype=torch.long)
 
 			inputs.append({'input_ids': input, 'labels': labels})
@@ -270,10 +285,9 @@ def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, m
 n_context = 2000
 retrieval_train_dataset = generate_retrieval_dataset(query_train, target_train, n_context)
 retrieval_test_dataset = generate_retrieval_dataset(query_test, target_test, n_context)
-print (retrieval_train_dataset[0], retrieval_test_dataset[0])
 
 # initialize retrieval model
-retrieval_model = RetrievalMixer(1024, 4, n_context)
+retrieval_model = RetrievalMixer(512, 4, 2000)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
