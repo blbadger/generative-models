@@ -23,6 +23,7 @@ import json
 import numpy as np
 import random
 from datasets import Dataset
+from safetensors.torch import safe_open
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -225,10 +226,6 @@ def embed_input(input_tokens):
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 
-train_text, test_text = load_dataset("roneneldan/TinyStories", split="train"), load_dataset("roneneldan/TinyStories", split="train")
-
-train_data = batch_tokenize_input(train_text, start=0, end=2000)
-test_data = batch_tokenize_input(train_text, start=2000, end=4000)
 n_vocab = len(tokenizer)
 
 # generative model initialization
@@ -238,13 +235,6 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 gen_model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_1024_f_8/checkpoint-160000/model.safetensors')
 gen_model.eval()
-target_train = embed_input(train_data)
-target_test = embed_input(test_data)
-
-query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60k.json'))]
-query_train_data = batch_tokenize_input(query_text, start=0, end=2000)
-query_test_data = batch_tokenize_input(query_text, start=2000, end=4000)
-query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
 	inputs = []
@@ -267,19 +257,75 @@ def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, m
 			inputs.append({'input_ids': input, 'labels': labels})
 	return inputs
 
-n_context = 2000
-retrieval_train_dataset = generate_retrieval_dataset(query_train, target_train, n_context)
-retrieval_test_dataset = generate_retrieval_dataset(query_test, target_test, n_context)
-print (retrieval_train_dataset[0], retrieval_test_dataset[0])
+def in_memory_dataset():
+	# for latency profiling against storage-based datasets
+	train_text, test_text = load_dataset("roneneldan/TinyStories", split="train"), load_dataset("roneneldan/TinyStories", split="train")
+
+	train_data = batch_tokenize_input(train_text, start=0, end=2000)
+	test_data = batch_tokenize_input(train_text, start=2000, end=4000)
+
+	target_train = embed_input(train_data)
+	target_test = embed_input(test_data)
+
+	query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60k.json'))]
+	query_train_data = batch_tokenize_input(query_text, start=0, end=2000)
+	query_test_data = batch_tokenize_input(query_text, start=2000, end=4000)
+	query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
+
+	n_context = 512
+	retrieval_train_dataset = generate_retrieval_dataset(query_train, target_train, n_context)
+	retrieval_test_dataset = generate_retrieval_dataset(query_test, target_test, n_context)
+	return retrieval_train_dataset, retrieval_test_dataset
+
+class RetrievalDataset(torch.utils.data.Dataset):
+
+	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=True):
+		self.target_embeddings = target_embeddings
+		self.query_embeddings = query_embeddings.unsqueeze(1)
+		self.n_context = n_context
+		self.prob_weights = torch.ones(self.target_embeddings.shape[0])
+		self.allocated_input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
+		self.indices = None
+		if pre_index:
+			self.indices = [torch.multinomial(self.prob_weights, self.n_context-1, replacement=False) for i in range(len(target_embeddings))]
+
+	def __getitem__(self, idx):
+		input = self.allocated_input
+		input[0] = self.query_embeddings[idx]
+		self.prob_weights[idx] = 0
+		if self.indices:
+			indices = self.indices[idx]
+		else:
+			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=False) 
+		self.prob_weights[idx] = 1
+		input[1:] = self.target_embeddings[indices]
+
+		target_index = random.randint(1, self.n_context-1) # random index to put target embedding
+		matching_target = self.target_embeddings[idx] # target the query matches
+		input[target_index] = matching_target
+		labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
+		return {'input_ids': input, 'labels': labels}
+   
+	def __len__(self):
+		return len(self.target_embeddings)
+  
+filepath = '/home/bbadger/Desktop/retrieval_50k.safetensors'
+with safe_open(filepath, framework="pt", device='cpu') as f:
+	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
+	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
+
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings)
 
 # initialize retrieval model
+n_context = 512
 retrieval_model = RetrievalMixer(1024, 4, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=5,
-	per_device_train_batch_size=4,
-	per_device_eval_batch_size=4,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=1000,
 	save_steps=4000,

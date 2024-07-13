@@ -210,13 +210,46 @@ def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, m
 			random_insert = torch.stack(random_insert, dim=0).reshape(input[1:].shape)
 			input[1:] = random_insert
 
-			target_index = random.randint(1, n_context-1)
-			matching_target = target_embeddings[i]
+			target_index = random.randint(1, n_context-1) # random index to put target embedding
+			matching_target = target_embeddings[i] # target the query matches
 			input[target_index] = matching_target
-			labels = torch.tensor(target_index-1, dtype=torch.long)
+			labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
 
 			inputs.append({'input_ids': input, 'labels': labels})
 	return inputs
+
+
+class RetrievalDataset(torch.utils.data.Dataset):
+
+    def __init__(self, target_embeddings, query_embeddings):
+    	self.target_embeddings = target_embeddings
+    	self.query_embeddings = query_embeddings
+
+    def __getitem__(self, idx):
+		input = torch.zeros((n_context, query_embeddings[0].shape[1]))
+		input[0] = self.query_embeddings[idx]
+		exclusive_target = self.target_embeddings[:idx] + self.target_embeddings[idx+1:]
+		random_insert = random.sample(exclusive_target, k=n_context-1)
+		random_insert = torch.stack(random_insert, dim=0).reshape(input[1:].shape)
+		input[1:] = random_insert
+
+		target_index = random.randint(1, n_context-1) # random index to put target embedding
+		matching_target = self.target_embeddings[idx] # target the query matches
+		input[target_index] = matching_target
+		labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
+		return {'input_ids': input, 'labels': labels}
+   
+    def __len__(self):
+        return len(self.encodings.input_ids)m
+  
+
+with safe_open(filepath, framework="pt", device='cpu') as f:
+    target_train_embeddings, target_test_embeddings = f['target_train_embeddings'], f['target_test_embeddings']
+    query_train_embeddings, query_test_embeddings = f['query_train_embeddings'], f['query_test_embeddings']
+
+
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings)
+test_dataset = RetreivalDataset(target_test_embeddings, query_test_embeddings)
 
 # n_context = 2000
 # retrieval_train_dataset = generate_retrieval_dataset(query_train, target_train, n_context)
