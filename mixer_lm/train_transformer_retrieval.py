@@ -1,4 +1,9 @@
 import os
+
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
+import os
 import torch
 import einops
 from einops import rearrange
@@ -18,7 +23,8 @@ import json
 import numpy as np
 import random
 from datasets import Dataset
-from safetensors.torch import safe_open
+from transformers import LlamaConfig, LlamaForCausalLM
+
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -48,7 +54,7 @@ class MixerBlock(nn.Module):
 		if expand_conv:
 			self.conv = ConvForward(length)
 		else:
-			self.conv3 = nn.Conv1d(length, length, 1)
+			self.conv = nn.Conv1d(length, length, 1)
 		self.mixer_mask = mixer_mask
 		self.expand_conv = expand_conv
 
@@ -70,14 +76,14 @@ class MixerBlock(nn.Module):
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 			else:
-				rearranged_shape = rearrange(self.conv3.weight, 'f d p -> f (d p)').shape
+				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv3.weight, 'f d p -> f (d p)') * mask
-				self.conv3.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
+				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv3(x) + residual
+		x = self.conv(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -137,13 +143,14 @@ class RetrievalMixer(nn.Module):
 
 	def __init__(self, dim, depth, n_samples):
 		super().__init__()
+		self.wte = nn.Embedding(n_vocab, dim)
 		self.mixerblocks = nn.ModuleList(
 			[BidirectionalMixerBlock(
 				dim = dim,
 				length = n_samples,
 				)
 			for i in range(depth)]
-			).to(device)
+			).to(0)
 		self.retrieval_head = nn.Linear(dim, 1, bias=False)
 		self.cel = nn.CrossEntropyLoss()
 
@@ -151,7 +158,7 @@ class RetrievalMixer(nn.Module):
 		# input_ids shape: [query_emb, target_emb_1, target_emb_2,...]
 		# labels have dim (input_ids-1) and are one-hot
 		x = input_ids
-		x = x.to(device)
+		x = x.to(0)
 		for block in self.mixerblocks:
 			x = block(x)
 		output = self.retrieval_head(x)
@@ -160,7 +167,6 @@ class RetrievalMixer(nn.Module):
 		# target_output = torch.squeeze(target_output, dim=-1)
 		labels = torch.unsqueeze(labels, 1)
 		loss = self.cel(target_output, labels) # compare predicted to actual match
-		# print (labels, torch.argmax(target_output, dim=1))
 		return loss, output
 
 
@@ -208,46 +214,44 @@ def embed_input(input_tokens):
 	for i in range(0, len(input_tokens)):
 		if i % 100 == 0:
 			print (i)
-		last_hidden_layers = gen_model(
-			input_tokens[i]
-		)[..., -2, :].detach().to('cpu')
+		output = gen_model(
+			input_tokens[i].to(0),
+			output_hidden_states=True
+		)
+		last_hidden_layers = output.hidden_states[-1][..., -1, :].detach().to('cpu')
 		# expects the model's output to be the last hidden layer
 		embeddings.append(last_hidden_layers)
 
 	embeddings = debatch_input(embeddings)
 	return embeddings
 
-
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
-
-<<<<<<< HEAD
-train_text, test_text = load_dataset("roneneldan/TinyStories", split="train"), load_dataset("roneneldan/TinyStories", split="train")
-
-train_data = batch_tokenize_input(train_text, start=0, end=10000)
-test_data = batch_tokenize_input(train_text, start=10000, end=12000)
-=======
->>>>>>> 4babf8fa78f8ab6ae2c9f0455415d3aa3e8230d0
 n_vocab = len(tokenizer)
 
 # generative model initialization
-tokenized_length = 512
-dim = 1024
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-gen_model = LanguageMixer(n_vocab, dim, 8).float().to(device)
-load_model(gen_model, '/home/bbadger/Desktop/tinystories_mixer_1024_n8_b32_lr5/checkpoint-36000/model.safetensors')
-gen_model.eval()
-query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60k.json'))]
-query_train_data = batch_tokenize_input(query_text, start=0, end=10000)
-query_test_data = batch_tokenize_input(query_text, start=10000, end=12000)
-query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
+dim = 512
+llama_config_kwargs = {
+    'hidden_size': dim,
+    'intermediate_size': 4*dim,
+    'num_hidden_layers': 8,
+    'num_heads': 4,
+    'vocab_size': 4096
+}
 
-def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
+# Initializing a LLaMA model
+configuration = LlamaConfig(**llama_config_kwargs)
+
+# Initializing a model from the llama-7b style configuration
+gen_model = LlamaForCausalLM(configuration).float().to(0)
+load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_llama_512_h4/checkpoint-188000/model.safetensors')
+gen_model.eval()
+
+def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=2):
 	inputs = []
 	for m in range(multiples):
 		print ('multiple: ', m)
 		for i, query in enumerate(query_embeddings):
-			print (query_embeddings[0].shape)
 			input = torch.zeros((n_context, query_embeddings[0].shape[1]))
 			input[0] = query
 			exclusive_target = target_embeddings[:i] + target_embeddings[i+1:]
@@ -257,7 +261,8 @@ def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, m
 
 			target_index = random.randint(1, n_context-1)
 			matching_target = target_embeddings[i]
-			input[target_index] = matching_target
+			input[target_index] = matching_target # first output is dropped
+			print (input[target_index])
 			labels = torch.tensor(target_index-1, dtype=torch.long)
 
 			inputs.append({'input_ids': input, 'labels': labels})
@@ -323,15 +328,15 @@ with safe_open(filepath, framework="pt", device='cpu') as f:
 train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings)
 test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings)
 
+
 # initialize retrieval model
-n_context = 512
-retrieval_model = RetrievalMixer(1024, 4, n_context)
+retrieval_model = RetrievalMixer(512, 4, 2000)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=5,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	per_device_train_batch_size=4,
+	per_device_eval_batch_size=4,
 	warmup_steps=500,
 	eval_steps=1000,
 	save_steps=4000,
@@ -353,4 +358,3 @@ trainer = transformers.Trainer(
 
 retrieval_model.train()
 trainer.train()
-
