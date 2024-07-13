@@ -1,8 +1,4 @@
 import os
-
-#os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-#os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
 import torch
 import einops
 from einops import rearrange
@@ -22,7 +18,7 @@ from prettytable import PrettyTable
 
 device = 0 if torch.cuda.is_available else 'cpu'
 
-dim = 512
+dim = 1024
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
@@ -205,7 +201,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/llama_b32_512_h4_n8_lr5',
+	output_dir='~/Desktop/transmixer_1024_b32_h4_n8_c1_lr5',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
@@ -218,7 +214,6 @@ trainer = transformers.Trainer(
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
-model = model.to(0)
 model.train()
 trainer.train() # '/home/bbadger/Desktop/tinystories_llama_256/checkpoint-96000'
 # trainer.train('/home/bbadger/Desktop/tinystories_autollama_512_n8/checkpoint-164000') # '/home/bbadger/Desktop/tinystories_autollama_512_n8/checkpoint-284000'
