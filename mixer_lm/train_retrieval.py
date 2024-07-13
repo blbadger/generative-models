@@ -1,9 +1,4 @@
 import os
-
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
-import os
 import torch
 import einops
 from einops import rearrange
@@ -52,7 +47,7 @@ class MixerBlock(nn.Module):
 		if expand_conv:
 			self.conv = ConvForward(length)
 		else:
-			self.conv = nn.Conv1d(length, length, 1)
+			self.conv3 = nn.Conv1d(length, length, 1)
 		self.mixer_mask = mixer_mask
 		self.expand_conv = expand_conv
 
@@ -74,14 +69,14 @@ class MixerBlock(nn.Module):
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 			else:
-				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+				rearranged_shape = rearrange(self.conv3.weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
-				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+				applied_mask = rearrange(self.conv3.weight, 'f d p -> f (d p)') * mask
+				self.conv3.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv(x) + residual
+		x = self.conv3(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -222,13 +217,13 @@ def embed_input(input_tokens):
 	return embeddings
 
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 
 train_text, test_text = load_dataset("roneneldan/TinyStories", split="train"), load_dataset("roneneldan/TinyStories", split="train")
 
-train_data = batch_tokenize_input(train_text, start=0, end=5000)
-test_data = batch_tokenize_input(train_text, start=5000, end=6000)
+train_data = batch_tokenize_input(train_text, start=0, end=10000)
+test_data = batch_tokenize_input(train_text, start=10000, end=12000)
 n_vocab = len(tokenizer)
 
 # generative model initialization
@@ -236,14 +231,14 @@ tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 gen_model = LanguageMixer(n_vocab, dim, 8).float().to(device)
-load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_1024_f_8/checkpoint-160000/model.safetensors')
+load_model(gen_model, '/home/bbadger/Desktop/tinystories_mixer_1024_n8_b32_lr5/checkpoint-36000/model.safetensors')
 gen_model.eval()
 target_train = embed_input(train_data)
 target_test = embed_input(test_data)
 
 query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60k.json'))]
-query_train_data = batch_tokenize_input(query_text, start=0, end=5000)
-query_test_data = batch_tokenize_input(query_text, start=5000, end=6000)
+query_train_data = batch_tokenize_input(query_text, start=0, end=10000)
+query_test_data = batch_tokenize_input(query_text, start=10000, end=12000)
 query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=2):
@@ -299,3 +294,4 @@ trainer = transformers.Trainer(
 
 retrieval_model.train()
 trainer.train()
+
