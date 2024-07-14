@@ -221,26 +221,15 @@ def embed_input(input_tokens):
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 
-<<<<<<< HEAD
-train_text, test_text = load_dataset("roneneldan/TinyStories", split="train"), load_dataset("roneneldan/TinyStories", split="train")
-
-train_data = batch_tokenize_input(train_text, start=0, end=10000)
-test_data = batch_tokenize_input(train_text, start=10000, end=12000)
-=======
->>>>>>> 4babf8fa78f8ab6ae2c9f0455415d3aa3e8230d0
 n_vocab = len(tokenizer)
 
 # generative model initialization
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-gen_model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+gen_model = LanguageMixer(n_vocab, dim, 8).float()
 load_model(gen_model, '/home/bbadger/Desktop/tinystories_mixer_1024_n8_b32_lr5/checkpoint-36000/model.safetensors')
 gen_model.eval()
-query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60k.json'))]
-query_train_data = batch_tokenize_input(query_text, start=0, end=10000)
-query_test_data = batch_tokenize_input(query_text, start=10000, end=12000)
-query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
 	inputs = []
@@ -320,20 +309,20 @@ with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
 
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings)
+n_context=64
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
 
 # initialize retrieval model
-n_context = 512
 retrieval_model = RetrievalMixer(1024, 4, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=5,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	num_train_epochs=200,
+	per_device_train_batch_size=128,
+	per_device_eval_batch_size=128,
 	warmup_steps=500,
-	eval_steps=1000,
+	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=1e-4,
 	fp16=True,
@@ -346,11 +335,10 @@ training_arguments = transformers.TrainingArguments(
 
 trainer = transformers.Trainer(
 	model=retrieval_model,
-	train_dataset=retrieval_train_dataset,
-	eval_dataset=retrieval_test_dataset,
+	train_dataset=train_dataset,
+	eval_dataset=test_dataset,
 	args=training_arguments
 )
 
 retrieval_model.train()
 trainer.train()
-
