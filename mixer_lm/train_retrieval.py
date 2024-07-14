@@ -124,7 +124,7 @@ class BidirectionalMixerBlock(nn.Module):
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
-		self.conv = nn.Conv1d(length, length, 1)
+		self.conv = nn.Conv1d(length, length, 2, padding='same')
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -149,7 +149,7 @@ class RetrievalMixer(nn.Module):
 				)
 			for i in range(depth)]
 			).to(device)
-		self.retrieval_head = nn.Linear(dim, 1, bias=False)
+		self.retrieval_head = nn.Linear(dim, 1, bias=True)
 		self.cel = nn.CrossEntropyLoss()
 
 	def forward(self, input_ids, labels=None):
@@ -165,7 +165,7 @@ class RetrievalMixer(nn.Module):
 		# target_output = torch.squeeze(target_output, dim=-1)
 		labels = torch.unsqueeze(labels, 1)
 		loss = self.cel(target_output, labels) # compare predicted to actual match
-		# print (labels, torch.argmax(target_output, dim=1))
+		# print (labels[:10], torch.argmax(target_output, dim=1)[:10])
 		return loss, output
 
 
@@ -279,7 +279,7 @@ def in_memory_dataset():
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=True):
+	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False):
 		self.target_embeddings = target_embeddings
 		self.query_embeddings = query_embeddings.unsqueeze(1)
 		self.n_context = n_context
@@ -296,7 +296,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		if self.indices:
 			indices = self.indices[idx]
 		else:
-			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=False) 
+			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=False)
 		self.prob_weights[idx] = 1
 		input[1:] = self.target_embeddings[indices]
 
@@ -304,7 +304,9 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		matching_target = self.target_embeddings[idx] # target the query matches
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
-		return {'input_ids': input, 'labels': labels}
+		input_copy = torch.clone(input)
+		retrieval_dict = {'input_ids': input_copy, 'labels': labels}
+		return retrieval_dict
    
 	def __len__(self):
 		return len(self.target_embeddings)
@@ -314,20 +316,21 @@ with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
 
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings)
+n_context = 128
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
+print (train_dataset[0], train_dataset[1])
 
 # initialize retrieval model
-n_context = 512
 retrieval_model = RetrievalMixer(1024, 4, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=5,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	num_train_epochs=50,
+	per_device_train_batch_size=128,
+	per_device_eval_batch_size=128,
 	warmup_steps=500,
-	eval_steps=1000,
+	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=1e-4,
 	fp16=True,
@@ -340,8 +343,8 @@ training_arguments = transformers.TrainingArguments(
 
 trainer = transformers.Trainer(
 	model=retrieval_model,
-	train_dataset=retrieval_train_dataset,
-	eval_dataset=retrieval_test_dataset,
+	train_dataset=train_dataset,
+	eval_dataset=test_dataset,
 	args=training_arguments
 )
 

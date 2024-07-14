@@ -24,6 +24,7 @@ import numpy as np
 import random
 from datasets import Dataset
 from transformers import LlamaConfig, LlamaForCausalLM
+from safetensors.torch import safe_open
 
 
 def FeedForward(dim, expansion_factor=4):
@@ -335,8 +336,8 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=5,
-	per_device_train_batch_size=4,
-	per_device_eval_batch_size=4,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32 ,
 	warmup_steps=500,
 	eval_steps=1000,
 	save_steps=4000,
