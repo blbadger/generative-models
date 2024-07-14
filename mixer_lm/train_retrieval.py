@@ -1,9 +1,4 @@
 import os
-
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
-import os
 import torch
 import einops
 from einops import rearrange
@@ -53,7 +48,7 @@ class MixerBlock(nn.Module):
 		if expand_conv:
 			self.conv = ConvForward(length)
 		else:
-			self.conv = nn.Conv1d(length, length, 1)
+			self.conv3 = nn.Conv1d(length, length, 1)
 		self.mixer_mask = mixer_mask
 		self.expand_conv = expand_conv
 
@@ -75,14 +70,14 @@ class MixerBlock(nn.Module):
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 			else:
-				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+				rearranged_shape = rearrange(self.conv3.weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
-				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+				applied_mask = rearrange(self.conv3.weight, 'f d p -> f (d p)') * mask
+				self.conv3.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv(x) + residual
+		x = self.conv3(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -124,7 +119,7 @@ class BidirectionalMixerBlock(nn.Module):
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
-		self.conv = nn.Conv1d(length, length, 1)
+		self.conv = nn.Conv1d(length, length, 2, padding='same')
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -149,7 +144,7 @@ class RetrievalMixer(nn.Module):
 				)
 			for i in range(depth)]
 			).to(device)
-		self.retrieval_head = nn.Linear(dim, 1, bias=False)
+		self.retrieval_head = nn.Linear(dim, 1, bias=True)
 		self.cel = nn.CrossEntropyLoss()
 
 	def forward(self, input_ids, labels=None):
@@ -165,7 +160,7 @@ class RetrievalMixer(nn.Module):
 		# target_output = torch.squeeze(target_output, dim=-1)
 		labels = torch.unsqueeze(labels, 1)
 		loss = self.cel(target_output, labels) # compare predicted to actual match
-		# print (labels, torch.argmax(target_output, dim=1))
+		# print (labels[:10], torch.argmax(target_output, dim=1)[:10])
 		return loss, output
 
 
@@ -223,7 +218,7 @@ def embed_input(input_tokens):
 	return embeddings
 
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 
 n_vocab = len(tokenizer)
@@ -232,8 +227,8 @@ n_vocab = len(tokenizer)
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-gen_model = LanguageMixer(n_vocab, dim, 8).float().to(device)
-load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_1024_f_8/checkpoint-160000/model.safetensors')
+gen_model = LanguageMixer(n_vocab, dim, 8).float()
+load_model(gen_model, '/home/bbadger/Desktop/tinystories_mixer_1024_n8_b32_lr5/checkpoint-36000/model.safetensors')
 gen_model.eval()
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
@@ -279,7 +274,7 @@ def in_memory_dataset():
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=True):
+	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False):
 		self.target_embeddings = target_embeddings
 		self.query_embeddings = query_embeddings.unsqueeze(1)
 		self.n_context = n_context
@@ -296,7 +291,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		if self.indices:
 			indices = self.indices[idx]
 		else:
-			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=False) 
+			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=False)
 		self.prob_weights[idx] = 1
 		input[1:] = self.target_embeddings[indices]
 
@@ -304,7 +299,9 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		matching_target = self.target_embeddings[idx] # target the query matches
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
-		return {'input_ids': input, 'labels': labels}
+		input_copy = torch.clone(input)
+		retrieval_dict = {'input_ids': input_copy, 'labels': labels}
+		return retrieval_dict
    
 	def __len__(self):
 		return len(self.target_embeddings)
@@ -314,20 +311,20 @@ with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
 
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings)
+n_context=64
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
 
 # initialize retrieval model
-n_context = 512
 retrieval_model = RetrievalMixer(1024, 4, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=5,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	num_train_epochs=200,
+	per_device_train_batch_size=128,
+	per_device_eval_batch_size=128,
 	warmup_steps=500,
-	eval_steps=1000,
+	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=1e-4,
 	fp16=True,
@@ -340,8 +337,8 @@ training_arguments = transformers.TrainingArguments(
 
 trainer = transformers.Trainer(
 	model=retrieval_model,
-	train_dataset=retrieval_train_dataset,
-	eval_dataset=retrieval_test_dataset,
+	train_dataset=train_dataset,
+	eval_dataset=test_dataset,
 	args=training_arguments
 )
 

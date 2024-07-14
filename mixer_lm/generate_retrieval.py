@@ -18,7 +18,7 @@ valid_text = load_dataset("roneneldan/TinyStories", split="validation")
 
 batch_size = 16
 outputs = []
-for j in tqdm(range(60000, 100000)):
+for j in tqdm(range(100000, 200000)):
 	output = model.create_chat_completion(
 	      messages = [
 	{"role": "system", "content": "You are an assistant for creating summaries for short stories."},
@@ -31,5 +31,5 @@ for j in tqdm(range(60000, 100000)):
 #	print (output['choices'][0])
 	outputs.append(output)
 
-with open('./train_output_60_100k.json', 'w') as f:
+with open('./train_output_100_200k.json', 'w') as f:
     json.dump(outputs, f)
