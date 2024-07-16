@@ -119,7 +119,7 @@ class BidirectionalMixerBlock(nn.Module):
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
-		self.conv = nn.Conv1d(length, length, 2, padding='same')
+		self.conv = nn.Conv1d(length, length, 1)
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -220,16 +220,11 @@ def embed_input(input_tokens):
 
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
-
 n_vocab = len(tokenizer)
 
-# generative model initialization
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-gen_model = LanguageMixer(n_vocab, dim, 8).float()
-load_model(gen_model, '/home/bbadger/Desktop/tinystories_mixer_1024_n8_b32_lr5/checkpoint-36000/model.safetensors')
-gen_model.eval()
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
 	inputs = []
@@ -302,25 +297,26 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		input_copy = torch.clone(input)
 		retrieval_dict = {'input_ids': input_copy, 'labels': labels}
 		return retrieval_dict
-   
+
 	def __len__(self):
-		return len(self.target_embeddings)
-  
-filepath = '/home/bbadger/Desktop/retrieval_50k.safetensors'
+		return min(len(self.query_embeddings), len(self.target_embeddings))
+
+filepath = '/home/bbadger/Desktop/retrieval_200k.safetensors'
 with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
 
-n_context=64
+n_context = 32
 train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
 test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
+print (len(target_test_embeddings), len(query_test_embeddings))
 
 # initialize retrieval model
-retrieval_model = RetrievalMixer(1024, 4, n_context)
+retrieval_model = RetrievalMixer(1024, 8, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=200,
+	num_train_epochs=1000,
 	per_device_train_batch_size=128,
 	per_device_eval_batch_size=128,
 	warmup_steps=500,
@@ -329,7 +325,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/retrieval_mixer_60k',
+	output_dir='~/Desktop/retrieval_mixer_200k',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
