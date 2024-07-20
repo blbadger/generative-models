@@ -119,7 +119,7 @@ class BidirectionalMixerBlock(nn.Module):
 		self.dim = dim
 		self.length = length
 		self.patch_ff = FeedForward(dim)
-		self.conv = nn.Conv1d(length, length, 2, padding='same')
+		self.conv = nn.Conv1d(length, length, 1)
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -311,16 +311,16 @@ with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
 
-n_context=64
+n_context = 32
 train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
 test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
 
 # initialize retrieval model
-retrieval_model = RetrievalMixer(1024, 4, n_context)
+retrieval_model = RetrievalMixer(1024, 8, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=200,
+	num_train_epochs=100,
 	per_device_train_batch_size=128,
 	per_device_eval_batch_size=128,
 	warmup_steps=500,
