@@ -164,8 +164,6 @@ class RetrievalMixer(nn.Module):
 			x = block(x)
 		output = self.retrieval_head(x)
 		target_output = output[..., 1:, :].contiguous() # first output is from query
-		# target_output = rearrange(target_output, 'b t e -> b e t')
-		# target_output = torch.squeeze(target_output, dim=-1)
 		labels = torch.unsqueeze(labels, 1)
 		loss = self.cel(target_output, labels) # compare predicted to actual match
 		return loss, output
@@ -316,7 +314,8 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		matching_target = self.target_embeddings[idx] # target the query matches
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
-		return {'input_ids': input, 'labels': labels}
+		input_copy = torch.clone(input)
+		return {'input_ids': input_copy, 'labels': labels}
    
 	def __len__(self):
 		return len(self.target_embeddings)
@@ -326,12 +325,12 @@ with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
 
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings)
-
+n_context = 512
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
 
 # initialize retrieval model
-retrieval_model = RetrievalMixer(512, 4, 2000)
+retrieval_model = RetrievalMixer(512, 4, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
