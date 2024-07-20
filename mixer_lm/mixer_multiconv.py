@@ -29,8 +29,10 @@ def FeedForward(dim, expansion_factor=4):
 class MixerHead(nn.Module):
 
 	def __init__(self, dim, length, hidden_dim, n_heads):
+		super().__init__()
+		self.n_heads = n_heads
 		self.proj_head = nn.ModuleList(
-			[nn.linear(dim, hidden_dim)
+			[nn.Linear(dim, hidden_dim)
 			for i in range(n_heads)]
 			).to(device)
 
@@ -39,10 +41,7 @@ class MixerHead(nn.Module):
 			for i in range(n_heads)]
 			)
 
-		self.out_proj = nn.ModuleList(
-			[nn.linear(hidden_dim, dim)
-			for i in range(n_heads)]
-			).to(device)
+		self.out_proj = nn.Linear(dim*n_heads, dim)		
 
 	def forward(self, x: torch.tensor):
 
@@ -50,14 +49,15 @@ class MixerHead(nn.Module):
 			masked_conv = torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d'))
 			self.convs[i].weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
 
-		hidden_layer = torch.tensor()
+		hidden_layer = []
 
-		for head in self.heads:
+		for head in range(self.n_heads):
 			projection = self.proj_head[i](x)
-			conv_projection = self.conv[i](x)
-			torch.cat(hidden_layer, self.out_proj[i](x))
+			conv_projection = self.convs[i](x)
+			hidden_layer.append(conv_projection)
 
 		# concatenate and project multi-headed output
+		hidden_layer = torch.cat(hidden_layer, dim=2)
 		hidden_layer = self.out_proj(hidden_layer)
 		return hidden_layer
 
@@ -69,11 +69,12 @@ class MixerBlock(nn.Module):
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
+		self.mixerhead = MixerHead(1024, 512, 512, 2)
 		self.patch_ff = FeedForward(dim)
 		# self.conv1 = nn.Conv1d(length, length, 1)
 		# self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv3 = nn.Conv1d(length, length, 1, padding='same')
-		self.conv = nn.Conv1d(length, length, 2, padding='same')
+		self.conv3 = nn.Conv1d(length, length, 4, padding='same')
+		# self.conv = nn.Conv1d(length, length, 2, padding='same')
 		# self.conv4 = nn.Conv1d(length, length, 4, padding='same')
 
 	def forward(self, x: torch.tensor):
@@ -89,15 +90,16 @@ class MixerBlock(nn.Module):
 		# masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
 		# self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
 
-		masked_conv3 = torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
-		self.conv.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
+		masked_conv3 =torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
+		self.conv3.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
 
 		# masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
 		# self.conv4.weight.data = rearrange(masked_conv4, 'p f d -> f d p').contiguous()
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv(x) + residual
+		x = self.mixerhead(x) + residual
+		# x = self.conv3(x) + residual
 
 		residual = x
 		x = self.patch_layernorm(x)
@@ -110,6 +112,7 @@ class LanguageMixer(nn.Module):
 	def __init__(self, n_vocab, dim, depth):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
+		self.wte_second = nn.Linear(dim, dim)
 		self.mixerblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,
@@ -117,6 +120,7 @@ class LanguageMixer(nn.Module):
 				)
 			for i in range(depth)]
 			).to(device)
+	
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		self.cel = nn.CrossEntropyLoss()
 
@@ -124,8 +128,10 @@ class LanguageMixer(nn.Module):
 		x = input_ids
 		x = x.to(device)
 		x = self.wte(x)
+		x = self.wte_second(x)
 		for block in self.mixerblocks:
 			x = block(x)
+		
 		output = self.lm_head(x)
 		labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
@@ -305,7 +311,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_lr5',
+	output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_c4_h2',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -319,9 +325,9 @@ trainer = transformers.Trainer(
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
 
+
 model.train()
 trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'
-
 for name, param in model.named_parameters():
 	print (name)
 
