@@ -1,9 +1,4 @@
 import os
-
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
-import os
 import torch
 import einops
 from einops import rearrange
@@ -53,7 +48,7 @@ class MixerBlock(nn.Module):
 		if expand_conv:
 			self.conv = ConvForward(length)
 		else:
-			self.conv = nn.Conv1d(length, length, 1)
+			self.conv3 = nn.Conv1d(length, length, 1)
 		self.mixer_mask = mixer_mask
 		self.expand_conv = expand_conv
 
@@ -75,14 +70,14 @@ class MixerBlock(nn.Module):
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 			else:
-				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+				rearranged_shape = rearrange(self.conv3.weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
-				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+				applied_mask = rearrange(self.conv3.weight, 'f d p -> f (d p)') * mask
+				self.conv3.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv(x) + residual
+		x = self.conv3(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -223,7 +218,7 @@ def embed_input(input_tokens):
 	return embeddings
 
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 
 n_vocab = len(tokenizer)
@@ -232,8 +227,8 @@ n_vocab = len(tokenizer)
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-gen_model = LanguageMixer(n_vocab, dim, 8).float().to(device)
-load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_1024_f_8/checkpoint-160000/model.safetensors')
+gen_model = LanguageMixer(n_vocab, dim, 8).float()
+load_model(gen_model, '/home/bbadger/Desktop/tinystories_mixer_1024_n8_b32_lr5/checkpoint-36000/model.safetensors')
 gen_model.eval()
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
@@ -319,7 +314,6 @@ with safe_open(filepath, framework="pt", device='cpu') as f:
 n_context = 32
 train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
 test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
-print (train_dataset[0], train_dataset[1])
 
 # initialize retrieval model
 retrieval_model = RetrievalMixer(1024, 8, n_context)
