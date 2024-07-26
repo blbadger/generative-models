@@ -126,7 +126,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, batch_size=128, start=0, end=60000):
+def batch_tokenize_input(train_text, batch_size=100, start=0, end=60000):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -194,9 +194,9 @@ tokenizer.pad_token = tokenizer.eos_token
 
 train_text, test_text = load_dataset("roneneldan/TinyStories", split="train"), load_dataset("roneneldan/TinyStories", split="train")
 
-start, split, end = 0, 180000, 200000
-target_train_data = batch_tokenize_input(train_text, start=start, end=split)
-target_test_data = batch_tokenize_input(train_text, start=split, end=end)
+start, split, end = 200000, 530000, 550000
+# target_train_data = batch_tokenize_input(train_text, start=start, end=split)
+# target_test_data = batch_tokenize_input(train_text, start=split, end=end)
 n_vocab = len(tokenizer)
 
 # generative model initialization
@@ -223,25 +223,27 @@ load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_512_f
 # load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_llama_1024/checkpoint-108000/model.safetensors')
 
 gen_model.eval()
-target_train = embed_input(target_train_data)
-target_test = embed_input(target_test_data)
+target_train, target_test = embed_input(target_train_data), embed_input(target_test_data)
 
 query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60k.json'))]
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60_100k.json'))]
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_100_200k.json'))]
-# query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_200_250k.json'))]
-# query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_250_300k.json'))] 
-# query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_250_300k.json'))]
-# query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_350_400k.json'))]
-# query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_400_450k.json'))]
-# print ('data loaded')
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_200_250k.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_250_300k.json'))] 
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_300_350k.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_350_400k.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_400_450k.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_450_500k.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_500_550k.json'))]
 
-query_train_data = batch_tokenize_input(query_text, start=start, end=split)
-query_test_data = batch_tokenize_input(query_text, start=split, end=end)
+# query_train_data = batch_tokenize_input(query_text, start=start, end=split)
+# query_test_data = batch_tokenize_input(query_text, start=split, end=end)
+check_index = 180000
+print (query_text[check_index], train_text[check_index])
 query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/retrieval_mixer_512_200k.safetensors'
+filepath = '/home/bbadger/Desktop/retrieval_mixer_512_200_550k.safetensors'
 save_file(dictionary, filepath)
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=10):

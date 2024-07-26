@@ -24,7 +24,7 @@ import math
 
 device = 0 if torch.cuda.is_available else 'cpu'
 
-dim = 1024
+dim = 512
 llama_config_kwargs = {
 	'hidden_size': dim,
 	'intermediate_size': 4*dim,
@@ -34,10 +34,10 @@ llama_config_kwargs = {
 }
 
 # Initializing a LLaMA model
-configuration = LlamaConfig(**llama_config_kwargs)
+# configuration = LlamaConfig(**llama_config_kwargs)
 
-# Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+# # Initializing a model from the llama-7b style configuration
+# model = LlamaForCausalLM(configuration).float()
 
 class PositionalEncoding(nn.Module):
 
@@ -83,21 +83,27 @@ class LanguageTransformer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
-model = LanguageTransformer(4096, 512, 8)
+# model = LanguageTransformer(4096, 512, 8)
+gpt_config = transformers.OpenAIGPTConfig(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
+model = transformers.OpenAIGPTLMHeadModel(gpt_config)
+
+# gpt_config = transformers.GPT2Config(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
+# model = transformers.GPT2LMHeadModel(gpt_config)
+
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
-print (model)
 
 # Causal mask check
-# model = model.to(device)
-# one = torch.tensor([[1, 2, 5]]).to(device)
-# two = torch.tensor([[1, 2, 3]]).to(device)
-# print (model(one, labels=one).logits)
-# print (model(two, labels=two).logits)
-# print (model)
+model = model.to(device)
+model.eval()
+one = torch.tensor([[4, 2, 3]]).to(device)
+two = torch.tensor([[1, 2, 3]]).to(device)
+
+print ("Ones's output: ", model(one).logits)
+print ("Two's output: ", model(two).logits)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -146,7 +152,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -242,16 +248,16 @@ if isinstance(model, LlamaForCausalLM):
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=4,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	num_train_epochs=3,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=5e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/original_transformer_512_n8_h8',
+	output_dir='~/Desktop/tinystories_gpt_512_h4_b16',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
