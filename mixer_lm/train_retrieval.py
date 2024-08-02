@@ -19,6 +19,7 @@ import numpy as np
 import random
 from datasets import Dataset
 from safetensors.torch import safe_open
+from tqdm import tqdm
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -137,6 +138,8 @@ class RetrievalMixer(nn.Module):
 
 	def __init__(self, dim, depth, n_samples):
 		super().__init__()
+		# self.query_embeddings = query_embeddings.to(device)
+		# self.target_embeddings = target_embeddings.to(device)
 		self.mixerblocks = nn.ModuleList(
 			[BidirectionalMixerBlock(
 				dim = dim,
@@ -152,6 +155,9 @@ class RetrievalMixer(nn.Module):
 		# labels have dim (input_ids-1) and are one-hot
 		x = input_ids
 		x = x.to(device)
+		# look up tensors for each index
+		# x[0] = self.query_embeddings[x[0]]
+		# x[1:] = self.target_embeddings[x[1:]]
 		for block in self.mixerblocks:
 			x = block(x)
 		output = self.retrieval_head(x)
@@ -164,7 +170,7 @@ class RetrievalMixer(nn.Module):
 		return loss, output
 
 
-class TransformerBLock(nn.Module):
+class TransformerBlock(nn.Module):
 
 	def __init__(self, dim, n_samples, n_heads):
 		super().__init__()
@@ -321,24 +327,28 @@ def in_memory_dataset():
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False):
+	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False, pre_index_epochs=100):
 		self.target_embeddings = target_embeddings
 		self.query_embeddings = query_embeddings.unsqueeze(1)
 		self.n_context = n_context
 		self.prob_weights = torch.ones(self.target_embeddings.shape[0])
 		self.allocated_input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
-		self.indices = None
+		self.pre_index = pre_index
 		if pre_index:
-			self.indices = [torch.multinomial(self.prob_weights, self.n_context-1, replacement=False) for i in range(len(target_embeddings))]
+			self.expanded_size = len(target_embeddings) * pre_index_epochs
+			self.indices = []
+			for i in tqdm(range(self.expanded_size)):
+				self.indices.append(torch.multinomial(self.prob_weights, self.n_context-1, replacement=True))
 
 	def __getitem__(self, idx):
-		input = self.allocated_input
+		input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
 		input[0] = self.query_embeddings[idx]
 		self.prob_weights[idx] = 0
-		if self.indices:
+		if self.pre_index:
 			indices = self.indices[idx]
 		else:
-			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=False)
+			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=True)
+			# indices = np.random.multinomial(self.n_context-1, self.prob_weights) 
 		self.prob_weights[idx] = 1
 		input[1:] = self.target_embeddings[indices]
 
@@ -346,19 +356,54 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		matching_target = self.target_embeddings[idx] # target the query matches
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
-		input_copy = torch.clone(input)
-		retrieval_dict = {'input_ids': input_copy, 'labels': labels}
+		retrieval_dict = {'input_ids': input, 'labels': labels}
 		return retrieval_dict
 
 	def __len__(self):
-		return min(len(self.query_embeddings), len(self.target_embeddings))
+		if self.pre_index:
+			return self.expanded_size
+		else:
+			return min(len(self.query_embeddings), len(self.target_embeddings))
+
+
+class RetrievalIndexDataset(torch.utils.data.Dataset):
+
+	def __init__(self, target_embeddings, query_embeddings, n_context=512):
+		self.target_embeddings = target_embeddings
+		self.query_embeddings = query_embeddings.unsqueeze(1)
+		self.n_context = n_context
+		self.length = len(query_embeddings)
+		self.indices = np.arange(0, self.length)
+		np.random.shuffle(self.indices)
+
+	def __getitem__(self, idx):
+		if self.n_context + self.n_context*idx >= self.length:
+			np.random.shuffle(self.indices)
+		input = self.indices[n_context*idx: self.n_context*idx + self.n_context]
+		target_index = random.randint(1, self.n_context-1) # random position to duplicate query index (at position 0)
+		input[target_index] = input[0]
+		input = torch.tensor(input)
+		labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
+		retrieval_dict = {'input_ids': input, 'labels': labels}
+		return retrieval_dict
+
+	def __len__(self):
+		return self.length
 
 filepath = '/home/bbadger/Desktop/retrieval_mixer_512_200k.safetensors'
 with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
+target_test_embeddings = target_test_embeddings[:len(query_test_embeddings)]
 
-n_context = 32
+filepath = '/home/bbadger/Desktop/retrieval_mixer_512_200_550k.safetensors'
+with safe_open(filepath, framework="pt", device='cpu') as f:
+	target_train_embeddings = torch.cat((target_train_embeddings, f.get_tensor('target_train')))
+	target_test_embeddings = torch.cat((target_test_embeddings, f.get_tensor('target_test')))
+	query_train_embeddings = torch.cat((query_train_embeddings, f.get_tensor('query_train')))
+	query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
+
+n_context = 128
 train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
 test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
 print (len(target_test_embeddings), len(query_test_embeddings))
@@ -368,7 +413,7 @@ retrieval_model = RetrievalMixer(512, 8, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=1000,
+	num_train_epochs=200,
 	per_device_train_batch_size=128,
 	per_device_eval_batch_size=128,
 	warmup_steps=500,
@@ -377,7 +422,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/retrieval_mixer_c32_512_200k',
+	output_dir='~/Desktop/retrieval_512_600k_fulltest',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

@@ -20,8 +20,10 @@ from transformers import LlamaConfig, LlamaForCausalLM
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
+	dropout = nn.Dropout(p=0.05)
 	return nn.Sequential(
 		nn.Linear(dim, inner_dim),
+		nn.Dropout(p=0.05),
 		nn.GELU(),
 		nn.Linear(inner_dim, dim)
 	)
@@ -41,12 +43,13 @@ class MixerHead(nn.Module):
 			for i in range(n_heads)]
 			)
 
-		self.out_proj = nn.Linear(dim*n_heads, dim)		
+		self.out_proj = nn.Linear(dim*n_heads, dim)
+		self.softmax = nn.Softmax(dim=-1)		
 
 	def forward(self, x: torch.tensor):
 
 		for i in range(len(self.convs)):
-			masked_conv = torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d'))
+			masked_conv = self.softmax(torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d')))
 			self.convs[i].weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
 
 		hidden_layer = []
@@ -73,7 +76,7 @@ class MixerBlock(nn.Module):
 		self.patch_ff = FeedForward(dim)
 		# self.conv1 = nn.Conv1d(length, length, 1)
 		# self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv3 = nn.Conv1d(length, length, 4, padding='same')
+		self.conv = nn.Conv1d(length, length, 4, padding='same')
 		# self.conv = nn.Conv1d(length, length, 2, padding='same')
 		# self.conv4 = nn.Conv1d(length, length, 4, padding='same')
 
@@ -90,16 +93,16 @@ class MixerBlock(nn.Module):
 		# masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
 		# self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
 
-		masked_conv3 =torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
-		self.conv3.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
+		masked_conv = torch.tril(rearrange(self.conv.weight, 'f d p -> p f d'))
+		self.conv.weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
 
 		# masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
 		# self.conv4.weight.data = rearrange(masked_conv4, 'p f d -> f d p').contiguous()
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.mixerhead(x) + residual
-		# x = self.conv3(x) + residual
+		# x = self.mixerhead(x) + residual
+		x = self.conv(x) + residual
 
 		residual = x
 		x = self.patch_layernorm(x)
@@ -128,7 +131,7 @@ class LanguageMixer(nn.Module):
 		x = input_ids
 		x = x.to(device)
 		x = self.wte(x)
-		x = self.wte_second(x)
+		# x = self.wte_second(x)
 		for block in self.mixerblocks:
 			x = block(x)
 		
@@ -206,7 +209,7 @@ def debatch_input(input_data):
 			output += list(input_data[i])
 	return output
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=4096):
+def batch_tokenize_input(train_text, test_text, length=20000, batch_size=4096):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -302,7 +305,7 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=4,
+	num_train_epochs=12,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
@@ -311,7 +314,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_c4_h2',
+	output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_c4_drop',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

@@ -199,11 +199,12 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=200000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
 	for i in range(0, length, batch_size):
+		print (i)
 		input_ids = tokenizer.batch_encode_plus(
 			train_text[i:i+batch_size]['text'],
 			add_special_tokens=False,
@@ -304,7 +305,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_512_n8_smask',
+	output_dir='~/Desktop/tinystories_mixer_1024_n8_softmax',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
