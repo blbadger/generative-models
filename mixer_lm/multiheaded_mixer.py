@@ -20,13 +20,13 @@ from transformers import LlamaConfig, LlamaForCausalLM
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
-	dropout = nn.Dropout(p=0.05)
+	# dropout = nn.Dropout(p=0.05)
 	return nn.Sequential(
 		nn.Linear(dim, inner_dim),
-		nn.Dropout(p=0.05),
+		# nn.Dropout(p=0.05),
 		nn.GELU(),
 		nn.Linear(inner_dim, dim)
-	)
+      	) 
 
 class MixerHead(nn.Module):
 
@@ -44,14 +44,14 @@ class MixerHead(nn.Module):
 			)
 
 		self.out_proj = nn.Linear(dim*n_heads, dim)
-		self.softmax = nn.Softmax(dim=-1)		
+		self.softmax = nn.Softmax(dim=-2)		
 
 	def forward(self, x: torch.tensor):
 
 		for i in range(len(self.convs)):
-			masked_conv = self.softmax(torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d')))
+			masked_conv = torch.tril(self.softmax(torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d'))))
 			self.convs[i].weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
-
+			
 		hidden_layer = []
 
 		for head in range(self.n_heads):
@@ -72,37 +72,15 @@ class MixerBlock(nn.Module):
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
-		self.mixerhead = MixerHead(1024, 512, 512, 2)
+		self.mixerhead = MixerHead(dim, length, 512, 2)
 		self.patch_ff = FeedForward(dim)
-		# self.conv1 = nn.Conv1d(length, length, 1)
-		# self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv = nn.Conv1d(length, length, 4, padding='same')
-		# self.conv = nn.Conv1d(length, length, 2, padding='same')
-		# self.conv4 = nn.Conv1d(length, length, 4, padding='same')
-
+	
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
-
-		# for CLM training, apply lower triangular mask to convolution weights
-		# rearranged_shape = rearrange(self.conv1.weight, 'f d p -> f (d p)').shape
-		# mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-		# applied_mask = rearrange(self.conv1.weight, 'f d p -> f (d p)') * mask
-		# self.conv1.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
-		# masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
-		# self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
-
-		#masked_conv = torch.tril(rearrange(self.conv.weight, 'f d p -> p f d'))
-		#self.conv.weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
-
-		# masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
-		# self.conv4.weight.data = rearrange(masked_conv4, 'p f d -> f d p').contiguous()
-
 		residual = x
 		x = self.seq_layernorm(x)
 		x = self.mixerhead(x) + residual
-		# x = self.conv(x) + residual
 
 		residual = x
 		x = self.patch_layernorm(x)
@@ -115,7 +93,6 @@ class LanguageMixer(nn.Module):
 	def __init__(self, n_vocab, dim, depth):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
-		self.wte_second = nn.Linear(dim, dim)
 		self.mixerblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,
@@ -131,7 +108,6 @@ class LanguageMixer(nn.Module):
 		x = input_ids
 		x = x.to(device)
 		x = self.wte(x)
-		# x = self.wte_second(x)
 		for block in self.mixerblocks:
 			x = block(x)
 		
@@ -152,13 +128,13 @@ print (tokenizer.is_fast)
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8)
+model = LanguageMixer(n_vocab, dim, 8).to(device)
 
-# one = torch.tensor([[[1, 2, 3]]]).to(device)
-# two = torch.tensor([[[1, 4, 3]]]).to(device)
-# print (model(one, labels=one))
-# print (model(two, labels=two))
-# print (model)
+#one = torch.tensor([[[1, 2, 3]]]).to(device)
+#two = torch.tensor([[[1, 2, 3]]]).to(device)
+#print (model(one, labels=one))
+#print (model(two, labels=two))
+#print (model)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -305,7 +281,7 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=2.5,
+	num_train_epochs=2.9,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
@@ -314,7 +290,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_h2_softmax',
+	output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_c1_h2_2soft',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

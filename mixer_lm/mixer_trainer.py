@@ -139,7 +139,7 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 512
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
@@ -297,8 +297,8 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=5,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
