@@ -1,6 +1,11 @@
 import os
+
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
 import prettytable
 from prettytable import PrettyTable
+
 
 import torch
 import einops
@@ -72,8 +77,8 @@ class MixerBlock(nn.Module):
 		self.patch_ff = FeedForward(dim)
 		# self.conv1 = nn.Conv1d(length, length, 1)
 		# self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv3 = nn.Conv1d(length, length, 2, padding='same')
-		# self.conv4 = nn.Conv1d(length, length, 4, padding='same')
+		self.conv = nn.Conv1d(length, length, 1, padding='same')
+		# self.conv4 = nn.Conv1d(length, length, 8, padding='same')
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -88,8 +93,8 @@ class MixerBlock(nn.Module):
 		# masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
 		# self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
 
-		masked_conv3 = torch.tril(rearrange(self.conv3.weight, 'f d p -> p f d'))
-		self.conv.weight.data = rearrange(masked_conv3, 'p f d -> f d p').contiguous()
+		masked_conv = torch.tril(rearrange(self.conv.weight, 'f d p -> p f d'))
+		self.conv.weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
 
 		# masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
 		# self.conv4.weight.data = rearrange(masked_conv4, 'p f d -> f d p').contiguous()
@@ -134,7 +139,7 @@ class LanguageMixer(nn.Module):
 		return loss, output
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
@@ -199,7 +204,7 @@ def debatch_input(input_data):
 			output += list(input_data[i])
 	return output
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=4096):
+def batch_tokenize_input(train_text, test_text, length=2000, batch_size=4096):
 	train_data, test_data = [], []
 	max_length = 512
 
