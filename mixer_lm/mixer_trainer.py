@@ -93,7 +93,7 @@ class MixerBlock(nn.Module):
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.convf(x) + self.convr(x) + residual
+		x = self.conv(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -109,7 +109,7 @@ class LanguageMixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = tokenized_length,
-				clm_mask=False
+				clm_mask=True
 				)
 			for i in range(depth)]
 			).to(device)
@@ -199,12 +199,12 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=200000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=50000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
 	for i in range(0, length, batch_size):
-		print (i)
+		if i % 4096 == 0: print (i)
 		input_ids = tokenizer.batch_encode_plus(
 			train_text[i:i+batch_size]['text'],
 			add_special_tokens=False,
@@ -296,16 +296,16 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=5,
+	num_train_epochs=50,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
-	eval_steps=4000,
-	save_steps=4000,
+	eval_steps=1000,
+	save_steps=1000,
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_1024_n8_softmax',
+	output_dir='~/Desktop/tinystories_mixer_1024_n8_50k',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

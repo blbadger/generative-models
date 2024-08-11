@@ -55,7 +55,10 @@ class MixerHead(nn.Module):
 		hidden_layer = []
 
 		for head in range(self.n_heads):
+			print ('input shape', x.shape)
 			projection = self.proj_head[i](x)
+			print ('weights shape', projection.shape)
+			print ('conv shape', self.convs[i].weight.shape)
 			conv_projection = self.convs[i](x)
 			hidden_layer.append(conv_projection)
 
@@ -72,7 +75,7 @@ class MixerBlock(nn.Module):
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
-		self.mixerhead = MixerHead(dim, length, 512, 2)
+		self.mixerhead = MixerHead(dim, length, 1024, 2)
 		self.patch_ff = FeedForward(dim)
 	
 	def forward(self, x: torch.tensor):
@@ -185,7 +188,7 @@ def debatch_input(input_data):
 			output += list(input_data[i])
 	return output
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=4096):
+def batch_tokenize_input(train_text, test_text, length=2000, batch_size=4096):
 	train_data, test_data = [], []
 	max_length = 512
 

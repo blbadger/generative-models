@@ -347,7 +347,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		if self.pre_index:
 			indices = self.indices[idx]
 		else:
-			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=False)
+			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=True)
 			# indices = np.random.multinomial(self.n_context-1, self.prob_weights) 
 		self.prob_weights[idx] = 1
 		input[1:] = self.target_embeddings[indices]
@@ -390,7 +390,7 @@ class RetrievalIndexDataset(torch.utils.data.Dataset):
 	def __len__(self):
 		return self.length
 
-filepath = '/home/bbadger/Desktop/retrieval_mixer_512_200k.safetensors'
+filepath = '/home/bbadger/Desktop/retrieval_untrained_mixer_200k.safetensors'
 with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
@@ -422,7 +422,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/retrieval_mixer_512_c128_200k_norep',
+	output_dir='~/Desktop/retrieval_mixer_512_200k_untrained_rep',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
