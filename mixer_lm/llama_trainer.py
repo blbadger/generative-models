@@ -34,9 +34,9 @@ llama_config_kwargs = {
 }
 
 # Initializing a LLaMA model
-# configuration = LlamaConfig(**llama_config_kwargs)
+configuration = LlamaConfig(**llama_config_kwargs)
 
-# # Initializing a model from the llama-7b style configuration
+# Initializing a model from the llama-7b style configuration
 # model = LlamaForCausalLM(configuration).float()
 
 class PositionalEncoding(nn.Module):
@@ -99,7 +99,7 @@ print (tokenizer.is_fast)
 # Causal mask check
 model = model.to(device)
 model.eval()
-one = torch.tensor([[4, 2, 3]]).to(device)
+one = torch.tensor([[1, 2, 3]]).to(device)
 two = torch.tensor([[1, 2, 3]]).to(device)
 
 print ("Ones's output: ", model(one).logits)
@@ -254,7 +254,7 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=5e-4, 
+	learning_rate=5e-4,
 	fp16=True, 
 	evaluation_strategy='steps',
 	output_dir='~/Desktop/tinystories_gpt_512_h4_b16',

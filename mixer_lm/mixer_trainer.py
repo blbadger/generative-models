@@ -30,7 +30,7 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def ConvForward(dim, expansion_factor=1):
+def ConvForward(dim, expansion_factor=2):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Conv1d(dim, inner_dim, 1),
@@ -41,7 +41,7 @@ def ConvForward(dim, expansion_factor=1):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, clm_mask=True, expand_conv=False):
+	def __init__(self, dim, length, clm_mask=True, expand_conv=True):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
@@ -67,11 +67,13 @@ class MixerBlock(nn.Module):
 			if self.expand_conv:
 				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				print ('Mask in shape', mask.shape)
 				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
 				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				print ('Mask out shape', mask.shape)
 				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
@@ -97,7 +99,7 @@ class MixerBlock(nn.Module):
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.convf(x) + self.convr(x) + residual
+		x = self.conv(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -113,7 +115,7 @@ class LanguageMixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = tokenized_length,
-				clm_mask=False
+				clm_mask=True
 				)
 			for i in range(depth)]
 			).to(device)
@@ -143,7 +145,7 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 512
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 

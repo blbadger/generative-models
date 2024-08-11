@@ -315,28 +315,28 @@ tokens = test_data[1]
 prompt = '''
 
 '''
-# tokens = tokenizer.encode(prompt, return_tensors='pt', padding='max_length', max_length=512)
+tokens = tokenizer.encode(prompt, return_tensors='pt', padding='max_length', max_length=512)
 
-# tokens = tokenizer.encode(
-# 				prompt,
-# 				add_special_tokens=False,
-# 				return_tensors='pt',
-# 				padding='max_length',
-# 				max_length=512
-# 			)
+tokens = tokenizer.encode(
+				prompt,
+				add_special_tokens=False,
+				return_tensors='pt',
+				padding='max_length',
+				max_length=512
+			)
 
-# print ('model loaded.')
-# print ('Input: ', tokenizer.decode(tokens[0]))
-# tokens = rearrange(tokens, '(b p) t -> b p t', p=1)
+print ('model loaded.')
+print ('Input: ', tokenizer.decode(tokens[0]))
+tokens = rearrange(tokens, '(b p) t -> b p t', p=1)
 
-# fout = []
-# for i in range(50, 1, -1):
-# 	loss, output = model(tokens, labels=tokens.to(device))
-# 	out_token = torch.topk(output, dim=1, k=1).indices.flatten()[-i]
-# 	tokens[..., -i+1] = out_token
+fout = []
+for i in range(50, 1, -1):
+	loss, output = model(tokens, labels=tokens.to(device))
+	out_token = torch.topk(output, dim=1, k=1).indices.flatten()[-i]
+	tokens[..., -i+1] = out_token
 
-# print ('\n \n')
-# print ('Output: \n', tokenizer.decode(tokens[0][0]))
+print ('\n \n')
+print ('Output: \n', tokenizer.decode(tokens[0][0]))
 
 
 def double_inference(tokens, start_pos=50):
@@ -362,4 +362,4 @@ def double_inference(tokens, start_pos=50):
 	print ('Output: \n', tokenizer.decode(tokens[0][0]))
 
 
-double_inference(tokens)
+# double_inference(tokens)
