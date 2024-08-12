@@ -139,7 +139,7 @@ class AutoencodingMixer(nn.Module):
 		return loss, output
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
@@ -147,7 +147,7 @@ print (tokenizer.is_fast)
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = AutoencodingMixer(n_vocab, dim, 4)
+model = AutoencodingMixer(n_vocab, dim, 8)
 
 
 def count_parameters(model):
@@ -199,7 +199,7 @@ def debatch_input(input_data):
 			output += list(input_data[i])
 	return output
 
-def batch_tokenize_input(train_text, test_text, length=20000, batch_size=4096):
+def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=4096):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -295,16 +295,16 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=2,
+	num_train_epochs=7,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=5e-4,
+	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/autoencoding_mixer_1024_n8_b32',
+	output_dir='~/Desktop/autoencoding_mixer_1024_n16_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -320,7 +320,7 @@ trainer = transformers.Trainer(
 
 
 model.train()
-trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'
+trainer.train('/home/bbadger/Desktop/autoencoding_mixer_1024_n16_b32/checkpoint-60000') # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'
 for name, param in model.named_parameters():
 	print (name)
 
