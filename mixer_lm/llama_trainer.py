@@ -28,10 +28,13 @@ llama_config_kwargs = {
 }
 
 # Initializing a LLaMA model
-configuration = LlamaConfig(**llama_config_kwargs)
+# configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+# model = LlamaForCausalLM(configuration).float()
+
+gpt_config = transformers.OpenAIGPTConfig(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
+model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
@@ -201,7 +204,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/transmixer_1024_b32_h4_n8_c1_lr5',
+	output_dir='~/Desktop/gpt_512_n8_h4_b32_lr5',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )

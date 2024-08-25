@@ -134,6 +134,7 @@ class BidirectionalMixerBlock(nn.Module):
 		x = self.patch_ff(x) + residual
 		return x
 
+
 class RetrievalMixer(nn.Module):
 
 	def __init__(self, dim, depth, n_samples):
@@ -156,18 +157,13 @@ class RetrievalMixer(nn.Module):
 		x = input_ids
 		x = x.to(device)
 		# look up tensors for each index
-		# x[0] = self.query_embeddings[x[0]]
-		# x[1:] = self.target_embeddings[x[1:]]
 		for block in self.mixerblocks:
 			x = block(x)
 		output = self.retrieval_head(x)
 		target_output = output[..., 1:, :].contiguous() # first output is from query
-		# target_output = rearrange(target_output, 'b t e -> b e t')
-		# target_output = torch.squeeze(target_output, dim=-1)
-		labels = torch.unsqueeze(labels, 1)
+		labels = torch.unsqueeze(labels, 1) # or target_output = torch.squeeze(target_output, dim=-1)
 		loss = self.cel(target_output, labels) # compare predicted to actual match
-		# print (labels[:10], torch.argmax(target_output, dim=1)[:10])
-		return loss, output
+		return loss, target_output
 
 
 class TransformerBlock(nn.Module):
@@ -327,13 +323,14 @@ def in_memory_dataset():
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False, pre_index_epochs=100):
+	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False, pre_index_epochs=100, replace=False):
 		self.target_embeddings = target_embeddings
 		self.query_embeddings = query_embeddings.unsqueeze(1)
 		self.n_context = n_context
 		self.prob_weights = torch.ones(self.target_embeddings.shape[0])
 		self.allocated_input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
 		self.pre_index = pre_index
+		self.replace = replace
 		if pre_index:
 			self.expanded_size = len(target_embeddings) * pre_index_epochs
 			self.indices = []
@@ -347,7 +344,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		if self.pre_index:
 			indices = self.indices[idx]
 		else:
-			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=True)
+			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=self.replace)
 			# indices = np.random.multinomial(self.n_context-1, self.prob_weights) 
 		self.prob_weights[idx] = 1
 		input[1:] = self.target_embeddings[indices]
@@ -390,7 +387,7 @@ class RetrievalIndexDataset(torch.utils.data.Dataset):
 	def __len__(self):
 		return self.length
 
-filepath = '/home/bbadger/Desktop/retrieval_untrained_mixer_200k.safetensors'
+filepath = '/home/bbadger/Desktop/retrieval_512_200k.safetensors' 
 with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
@@ -404,8 +401,8 @@ target_test_embeddings = target_test_embeddings[:len(query_test_embeddings)]
 ##	query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
 
 n_context = 128
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=True)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=True)
 print (len(target_test_embeddings), len(query_test_embeddings))
 
 # initialize retrieval model
@@ -414,15 +411,15 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=200,
-	per_device_train_batch_size=128,
-	per_device_eval_batch_size=128,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/retrieval_mixer_512_200k_untrained_rep',
+	output_dir='~/Desktop/retrieval_mixer_1024_200k_c128',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
