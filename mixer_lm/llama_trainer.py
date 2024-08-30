@@ -18,23 +18,23 @@ from prettytable import PrettyTable
 
 device = 0 if torch.cuda.is_available else 'cpu'
 
-dim = 1024
+dim = 256
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
     'num_hidden_layers': 8,
-    'num_attention_heads': 4,
+    'num_attention_heads': 32,
     'vocab_size': 4096
 }
 
 # Initializing a LLaMA model
-# configuration = LlamaConfig(**llama_config_kwargs)
+configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-# model = LlamaForCausalLM(configuration).float()
+model = LlamaForCausalLM(configuration).float()
 
-gpt_config = transformers.OpenAIGPTConfig(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
-model = transformers.OpenAIGPTLMHeadModel(gpt_config)
+# gpt_config = transformers.OpenAIGPTConfig(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
+# model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
@@ -195,16 +195,16 @@ if isinstance(model, LlamaForCausalLM):
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=4,
+	num_train_epochs=20,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=5e-4, 
+	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/gpt_512_n8_h4_b32_lr5',
+	output_dir='~/Desktop/llama_256_long',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )

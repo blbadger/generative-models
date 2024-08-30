@@ -80,16 +80,16 @@ class MixerBlock(nn.Module):
 				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		else:
-			# reshaped_conv = rearrange(self.conv.weight, 'f d p -> (p f) d', p=1)
-			# masked_conv = torch.diagonal_scatter(reshaped_conv, torch.zeros(self.length-1), 1)
-			# self.conv.weight.data = rearrange(masked_conv, '(p f) d -> f d p', p=1).contiguous()
+			reshaped_conv = rearrange(self.conv.weight, 'f d p -> (p f) d', p=1)
+			masked_conv = torch.diagonal_scatter(reshaped_conv, torch.zeros(self.length-1), 1)
+			self.conv.weight.data = rearrange(masked_conv, '(p f) d -> f d p', p=1).contiguous()
 
 
-			masked_convf = torch.tril(rearrange(self.convf.weight, 'f d p -> p f d'))
-			self.convf.weight.data = rearrange(masked_convf, 'p f d -> f d p').contiguous()
+			# masked_convf = torch.tril(rearrange(self.convf.weight, 'f d p -> p f d'))
+			# self.convf.weight.data = rearrange(masked_convf, 'p f d -> f d p').contiguous()
 
-			masked_convr = torch.triu(rearrange(self.convr.weight, 'f d p -> p f d'), diagonal=2)
-			self.convr.weight.data = rearrange(masked_convr, 'p f d -> f d p').contiguous()
+			# masked_convr = torch.triu(rearrange(self.convr.weight, 'f d p -> p f d'), diagonal=2)
+			# self.convr.weight.data = rearrange(masked_convr, 'p f d -> f d p').contiguous()
 
 		residual = x
 		x = self.seq_layernorm(x)
@@ -139,7 +139,7 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 1024
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8)
 
@@ -296,7 +296,7 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=5,
+	num_train_epochs=20,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
@@ -305,7 +305,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_newhf',
+	output_dir='~/Desktop/tinystories_mixer_512_n8_b32_long',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
