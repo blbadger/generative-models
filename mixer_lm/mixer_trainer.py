@@ -93,10 +93,10 @@ class MixerBlock(nn.Module):
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv(x) + residual
+		x = self.conv(x)#  + residual
 		residual = x
 		x = self.patch_layernorm(x)
-		x = self.patch_ff(x) + residual
+		x = self.patch_ff(x)# + residual
 		return x
 
 
@@ -139,9 +139,9 @@ n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 512
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8)
+model = LanguageMixer(n_vocab, dim, 2) 
 
 # one = torch.tensor([[[1, 4, 3]]]).to(device)
 # two = torch.tensor([[[1, 2, 3]]]).to(device)
@@ -199,12 +199,12 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
 	for i in range(0, length, batch_size):
-		if i % 8192 == 0: print (i)
+		
 		input_ids = tokenizer.batch_encode_plus(
 			train_text[i:i+batch_size]['text'],
 			add_special_tokens=False,
@@ -296,7 +296,7 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=20,
+	num_train_epochs=5,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
@@ -305,7 +305,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_512_n8_b32_long',
+	output_dir='~/Desktop/mixer_1024_noresids',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

@@ -15,10 +15,12 @@ from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
 import prettytable
 from prettytable import PrettyTable
+from safetensors.torch import save_file
+from safetensors import safe_open
 
 device = 0 if torch.cuda.is_available else 'cpu'
 
-dim = 256
+dim = 512 
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
@@ -179,6 +181,22 @@ def tokenize_input(train_text, test_text):
 train_data, test_data = batch_tokenize_input(train_text, valid_text)
 # train_data, test_data = debetach_input(train_data), debatch_input(test_data)
 
+data_dict = {
+	'train_data': torch.stack(train_data, dim=0), 
+	'test_data': torch.stack(test_data, dim=0)
+}
+
+save_file(data_dict, '/home/bbadger/Desktop/tinystories_tokens.safetensors')
+print ('tokens saved')
+tensors = {}
+with safe_open("/home/bbadger/Desktop/tinystories_tokens.safetensors", framework="pt", device="cpu") as f:
+   for key in f.keys():
+       tensors[key] = f.get_tensor(key)
+
+train_data = list(tensors['train_data'])
+test_data = list(tensors['test_data'])
+
+
 def reformat_inputs(train_data, test_data):
 	# reformat inputs for transformer model
 	for i, _ in enumerate(train_data):
@@ -204,7 +222,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/llama_256_long',
+	output_dir='~/Desktop/llama_512_nonorm',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )
