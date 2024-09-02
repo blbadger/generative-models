@@ -21,6 +21,8 @@ from transformers import LlamaConfig, LlamaForCausalLM
 import prettytable
 from prettytable import PrettyTable
 import math
+from safetensors.torch import save_file
+from safetensors import safe_open
 
 device = 0 if torch.cuda.is_available else 'cpu'
 
@@ -152,11 +154,12 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
 	for i in range(0, length, batch_size):
+
 		input_ids = tokenizer.batch_encode_plus(
 			train_text[i:i+batch_size]['text'],
 			add_special_tokens=False,
@@ -230,6 +233,18 @@ def tokenize_input(train_text, test_text):
 	return train_data, test_data
 
 train_data, test_data = batch_tokenize_input(train_text, valid_text)
+print (train_data[0])
+data_dict = {
+	'train_data': torch.stack(train_data, dim=0), 
+	'test_data': torch.stack(test_data, dim=0)
+}
+
+save_file(data_dict, '/home/bbadger/Desktop/test_file.safetensors')
+tensors = {}
+with safe_open("/home/bbadger/Desktop/test_file.safetensors", framework="pt", device="cpu") as f:
+   for key in f.keys():
+       tensors[key] = f.get_tensor(key)
+print (tensors['train_data'][0])
 # train_data, test_data = debetach_input(train_data), debatch_input(test_data)
 
 def reformat_inputs(train_data, test_data):

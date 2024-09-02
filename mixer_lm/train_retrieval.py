@@ -24,6 +24,7 @@ import numpy as np
 import random
 from datasets import Dataset
 from safetensors.torch import safe_open
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -151,6 +152,7 @@ class RetrievalMixer(nn.Module):
 			).to(device)
 		self.retrieval_head = nn.Linear(dim, 1, bias=True)
 		self.cel = nn.CrossEntropyLoss()
+		self.softmax = torch.nn.Softmax(dim=1)
 
 	def forward(self, input_ids, labels=None):
 		# input_ids shape: [query_emb, target_emb_1, target_emb_2,...]
@@ -161,12 +163,10 @@ class RetrievalMixer(nn.Module):
 			x = block(x)
 		output = self.retrieval_head(x)
 		target_output = output[..., 1:, :].contiguous() # first output is from query
-		# target_output = rearrange(target_output, 'b t e -> b e t')
-		# target_output = torch.squeeze(target_output, dim=-1)
-		labels = torch.unsqueeze(labels, 1)
+		target_output = torch.squeeze(target_output, dim=-1)
+		target_output = self.softmax(target_output)
 		loss = self.cel(target_output, labels) # compare predicted to actual match
-		# print (labels[:10], torch.argmax(target_output, dim=1)[:10])
-		return loss, output
+		return loss, target_output
 
 
 def debatch_input(input_data):
@@ -223,19 +223,6 @@ def embed_input(input_tokens):
 	return embeddings
 
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
-tokenizer.pad_token = tokenizer.eos_token
-
-n_vocab = len(tokenizer)
-
-# generative model initialization
-tokenized_length = 512
-dim = 512
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-gen_model = LanguageMixer(n_vocab, dim, 8).float()
-load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_512_flat/checkpoint-424000/model.safetensors')
-gen_model.eval()
-
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
 	inputs = []
 	for m in range(multiples):
@@ -279,7 +266,7 @@ def in_memory_dataset():
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=True):
+	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False):
 		self.target_embeddings = target_embeddings
 		self.query_embeddings = query_embeddings.unsqueeze(1)
 		self.n_context = n_context
@@ -296,7 +283,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		if self.indices:
 			indices = self.indices[idx]
 		else:
-			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=True)
+			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=False)
 		self.prob_weights[idx] = 1
 		input[1:] = self.target_embeddings[indices]
 
@@ -308,43 +295,59 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		return retrieval_dict
    
 	def __len__(self):
-		return len(self.target_embeddings)
-  
-filepath = '/home/bbadger/Desktop/retrieval_mixer_512_200k.safetensors'
-with safe_open(filepath, framework="pt", device='cpu') as f:
-	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
-	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
+		return min(len(self.target_embeddings), len(self.query_embeddings))
 
-n_context = 128
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
 
-# initialize retrieval model
-retrieval_model = RetrievalMixer(512, 8, n_context)
-print ('training begun')
+if __name__ == '__main__':
+	tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+	tokenizer.pad_token = tokenizer.eos_token
 
-training_arguments = transformers.TrainingArguments(
-	num_train_epochs=100,
-	per_device_train_batch_size=128,
-	per_device_eval_batch_size=128,
-	warmup_steps=500,
-	eval_steps=4000,
-	save_steps=4000,
-	learning_rate=1e-4,
-	fp16=True,
-	evaluation_strategy='steps',
-	output_dir='~/Desktop/retrieval_mixer_test',
-	optim='adamw_torch',
-	overwrite_output_dir=True,
-	save_safetensors=True
-)
+	n_vocab = len(tokenizer)
 
-trainer = transformers.Trainer(
-	model=retrieval_model,
-	train_dataset=train_dataset,
-	eval_dataset=test_dataset,
-	args=training_arguments
-)
+	# generative model initialization
+	tokenized_length = 512
+	dim = 512
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	gen_model = LanguageMixer(n_vocab, dim, 8).float()
+	load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_512_flat/checkpoint-424000/model.safetensors')
+	gen_model.eval()
 
-retrieval_model.train()
-trainer.train()
+	  
+	filepath = '/home/bbadger/Desktop/retrieval_mixer_512_200k.safetensors'
+	with safe_open(filepath, framework="pt", device='cpu') as f:
+		target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
+		query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
+
+	n_context = 32
+	train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
+	test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
+
+	# initialize retrieval model
+	retrieval_model = RetrievalMixer(512, 8, n_context)
+	print ('training begun')
+
+	training_arguments = transformers.TrainingArguments(
+		num_train_epochs=100,
+		per_device_train_batch_size=128,
+		per_device_eval_batch_size=128,
+		warmup_steps=500,
+		eval_steps=4000,
+		save_steps=4000,
+		learning_rate=1e-4,
+		fp16=True,
+		evaluation_strategy='steps',
+		output_dir='~/Desktop/retrieval_mixer_test',
+		optim='adamw_torch',
+		overwrite_output_dir=True,
+		save_safetensors=True
+	)
+
+	trainer = transformers.Trainer(
+		model=retrieval_model,
+		train_dataset=train_dataset,
+		eval_dataset=test_dataset,
+		args=training_arguments
+	)
+
+	retrieval_model.train()
+	trainer.train()

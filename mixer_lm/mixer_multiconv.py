@@ -77,7 +77,7 @@ class MixerBlock(nn.Module):
 		self.patch_ff = FeedForward(dim)
 		# self.conv1 = nn.Conv1d(length, length, 1)
 		# self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv = nn.Conv1d(length, length, 1, padding='same')
+		self.conv = nn.Conv1d(length, length, 4, padding='same')
 		# self.conv4 = nn.Conv1d(length, length, 8, padding='same')
 
 	def forward(self, x: torch.tensor):
@@ -136,7 +136,7 @@ class LanguageMixer(nn.Module):
 		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous()
 		loss = self.cel(shift_logits, shift_labels)
-		return loss, output
+		return (loss, output)
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
@@ -312,7 +312,8 @@ training_arguments = transformers.TrainingArguments(
 	output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_lr5',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	save_safetensors=True
+	save_safetensors=True,
+	torch_compile=True
 )
 
 trainer = transformers.Trainer(

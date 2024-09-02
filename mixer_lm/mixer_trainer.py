@@ -41,7 +41,7 @@ def ConvForward(dim, expansion_factor=2):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, clm_mask=True, expand_conv=True):
+	def __init__(self, dim, length, clm_mask=True, expand_conv=False):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
@@ -302,12 +302,12 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=5,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=2e-4,
+	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
 	output_dir='~/Desktop/tinystories_mixer_512_n8_smask',
