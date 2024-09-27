@@ -25,6 +25,7 @@ import random
 from datasets import Dataset
 from safetensors.torch import save_file
 from transformers import LlamaConfig, LlamaForCausalLM
+from linear_mixer import LanguageMixer, LinearMixer
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -128,7 +129,7 @@ def debatch_input(input_data):
 
 def batch_tokenize_input(train_text, batch_size=100, start=0, end=60000):
 	train_data, test_data = [], []
-	max_length = 512
+	max_length = 64
 
 	for i in range(start, end, batch_size):
 		if isinstance(train_text[0], dict):
@@ -174,7 +175,7 @@ def embed_input(input_tokens):
 def transformer_embed_input(input_tokens):
 	embeddings = []
 	for i in range(0, len(input_tokens)):
-		if i % 100 == 0:
+		if i % 1000 == 0:
 			print (i)
 		output = gen_model(
 			input_tokens[i].to(0),
@@ -189,7 +190,7 @@ def transformer_embed_input(input_tokens):
 	return embeddings
 
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
 train_text, test_text = load_dataset("roneneldan/TinyStories", split="train"), load_dataset("roneneldan/TinyStories", split="train")
@@ -200,10 +201,12 @@ target_test_data = batch_tokenize_input(train_text, start=split, end=end)
 n_vocab = len(tokenizer)
 
 # generative model initialization
-tokenized_length = 512
+tokenized_length = 64
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-dim = 512
-gen_model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+dim = 4096
+gen_model = LinearMixer(n_vocab, dim, 1).float().to(device)
+load_model(gen_model, '/home/bbadger/Desktop/linear_mixer_4096.safetensors')
+# gen_model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 # load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_512_flat/checkpoint-424000/model.safetensors')
 
 # dim = 1024
@@ -243,7 +246,7 @@ for i in range(30):
 query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/retrieval_untrained_mixer_200k.safetensors'
+filepath = '/home/bbadger/Desktop/retrieval_4096_linear_200k.safetensors'
 save_file(dictionary, filepath)
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=10):

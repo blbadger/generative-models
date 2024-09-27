@@ -51,7 +51,7 @@ def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Linear(dim, inner_dim).to(torch.cfloat),
-		PhaseAmplitudeGelu(),
+		# PhaseAmplitudeGelu(),
 		nn.Linear(inner_dim, dim).to(torch.cfloat)
 	)
 
@@ -112,10 +112,10 @@ class MixerBlock(nn.Module):
 				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
-		x = self.seq_layernorm(x)
+		# x = self.seq_layernorm(x)
 		x = self.conv(x) + residual
 		residual = x
-		x = self.patch_layernorm(x)
+		# x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
 		return x
 
@@ -205,7 +205,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=200000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 

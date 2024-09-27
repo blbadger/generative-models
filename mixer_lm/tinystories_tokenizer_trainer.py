@@ -1,19 +1,24 @@
 from datasets import load_dataset
-
-# dataset = load_dataset("roneneldan/TinyStories")
-
 from pathlib import Path
 from tokenizers import ByteLevelBPETokenizer
 import os
-
 from transformers import AutoTokenizer
-
-
+import time
 import torch
 from transformers import AutoTokenizer, BatchEncoding
 
-file_path = "/home/bbadger/Desktop/TinyStories-train.txt"
+
+
+train_text = load_dataset("open-phi/textbooks", split="train")[:1600]["markdown"]
+valid_text = load_dataset("open-phi/textbooks", split="train")[1600:]["markdown"]
+print (len(train_text), len(valid_text))
+print (train_text[0])
+
+# file_path = "/home/bbadger/Desktop/TinyStories-train.txt"
+# dataset = load_dataset("roneneldan/TinyStories")
+dataset = load_dataset("open-phi/textbooks")
 old_tokenizer = AutoTokenizer.from_pretrained("openlm-research/open_llama_3b")
+old_tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B")
 
 class TextDataset(torch.utils.data.Dataset):
     """
@@ -44,16 +49,24 @@ class TextDataset(torch.utils.data.Dataset):
         return batch
 
 # Create the dataset, and process the full file. 
-dataset = TextDataset(file_path, batch_size=1024)
-
+# dataset = TextDataset(dataset, batch_size=1024)
 # DataLoader for efficient batch processing
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=None)
 
-# Train the new tokenizer
-tokenizer = old_tokenizer.train_new_from_iterator(dataloader, 4096)
-tokenizer.save_pretrained("/home/bbadger/Desktop/tiny_token_4k")
-print ("Tokenizer saved")
+def get_training_corpus(dataset):
+    dataset = dataset["train"]
+    for i in range(len(dataset)):
+        sample = dataset[i]
+        print (len(sample['markdown']))
+        yield sample['markdown']
 
+training_corpus = get_training_corpus(dataset)
+# print (next(training_corpus))
+
+# Train the new tokenizer
+tokenizer = old_tokenizer.train_new_from_iterator(training_corpus, 8136)
+tokenizer.save_pretrained("/home/bbadger/Desktop/tokenizer_textbooks_8k")
+print ("Tokenizer saved")
 
 # with open("/home/bbadger/Desktop/TinyStories-train.txt", "r") as file:
 #     dataset = file.read()

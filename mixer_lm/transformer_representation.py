@@ -40,12 +40,13 @@ def octave(single_input, target_output, iterations, learning_rates):
     losses, i_arr = [], []
 
     for i in range(iterations):
-        input_grad, loss = layer_gradient(model, single_input, target_output)
+        # input_grad, loss = layer_gradient(model, single_input, target_output)
+        input_grad, loss = feature_gradient(model, single_input, index=0)
         single_input = single_input.detach()
         single_input -= (start_lr*(iterations-i)/iterations + end_lr*i/iterations)*input_grad
     return single_input
 
-def generate_singleinput(model, target, lr=0.02): # 0.01
+def generate_singleinput(model, target, lr=2): # 0.02
     random_input = torch.randn(embedding.shape).to(device)
     single_input = octave(random_input, target, 500, [lr, lr/10])
     return single_input
@@ -67,6 +68,15 @@ def layer_gradient(model, input_tensor, target, cosine_metric=False):
     gradient = input_tensor.grad
     return gradient, loss.item()
 
+def feature_gradient(model, input_tensor, index=0):
+    input_tensor.requires_grad = True # usually only necessary once
+    output = a_model(input_tensor)
+    # assumes dims of [batch, token, hidden_dim]
+    loss = torch.sum(100 - output[:, :, index])
+    loss.backward()
+    gradient = input_tensor.grad
+    return gradient, loss.item()
+
 
 class AbbreviatedModel(nn.Module):
 
@@ -78,7 +88,7 @@ class AbbreviatedModel(nn.Module):
         # Matrix mult instead of embedding to prevent type incompatibility
         position_ids = torch.tensor([[i for i in range(x.shape[1])]]).to(device)
 
-        for i in range(8):
+        for i in range(6):
             x = self.model.model.layers[i](x, position_ids=position_ids)[0]
 
         return x
@@ -117,14 +127,14 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
     tokenizer.pad_token = tokenizer.eos_token
     n_vocab = len(tokenizer)
-    dims = [256]
+    dims = [512]
     for d in dims:
-        root = '/home/bbadger/Desktop/llama_256_longs/'
+        root = '/home/bbadger/Desktop/tinystories/llama_256_longs/'
         hammings = []
         sorted_dirs = sorted(os.listdir(root))[:-1] # remove 'llama.py'
         sorted_dirs.sort(key=lambda dir: int(dir[11:]))
         for dir in sorted_dirs:
-            tokenized_length = 512
+            tokenized_length = 6
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             dim = d
             llama_config_kwargs = {
@@ -164,7 +174,9 @@ if __name__ == "__main__":
 
             # for safetensors
             print (root + dir)
-            load_model(model, root + dir + '/model.safetensors')
+            # load_model(model, root + dir + '/model.safetensors')
+            load_model(model, '/home/bbadger/Desktop/tinystories/tinystories_llama_512_h4/checkpoint-188000/model.safetensors')
+            print ('model_loaded')
 
             tokenizer.pad_token = tokenizer.eos_token
             hamming_metrics = []
@@ -205,11 +217,11 @@ if __name__ == "__main__":
 
                 logits = torch.matmul(generated_input, inverse_embedding)
                 topk_k = 5
-                generated_tokens = torch.topk(logits, topk_k)[1][0] # indicies of topk of tensor [length, topk_tokens]
+                generated_tokens = torch.topk(logits, topk_k)[1][0] # indicies of topk of tensor [length, topk_tokens]\
 
                 for i in range(1):
                     output = tokenizer.decode([o[i] for o in generated_tokens])
-                    # print (output)
+                    print (output)
                     break
 
                 # print ('\n')

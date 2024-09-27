@@ -67,13 +67,11 @@ class MixerBlock(nn.Module):
 			if self.expand_conv:
 				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				print ('Mask in shape', mask.shape)
 				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
 				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				print ('Mask out shape', mask.shape)
 				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
@@ -147,7 +145,7 @@ print (tokenizer.is_fast)
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+model = LanguageMixer(n_vocab, dim, 4).float().to(device)
 
 # one = torch.tensor([[[1, 4, 3]]]).to(device)
 # two = torch.tensor([[[1, 2, 3]]]).to(device)
@@ -205,7 +203,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=200000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -301,16 +299,16 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=5,
+	num_train_epochs=100,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=5e-4,
+	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_512_n8_smask',
+	output_dir='~/Desktop/tinystories_mixer_linear',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
