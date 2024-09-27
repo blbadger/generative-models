@@ -1,4 +1,3 @@
-import os
 import prettytable
 from prettytable import PrettyTable
 
@@ -7,7 +6,6 @@ import einops
 from einops import rearrange
 import transformers
 from transformers import PreTrainedTokenizerFast
-from transformers import TextDataset, Trainer, TrainingArguments
 from transformers import TextDataset, Trainer, TrainingArguments, AutoModelWithLMHead, DataCollatorForLanguageModeling
 import torch.nn as nn
 import mlflow
@@ -17,42 +15,15 @@ import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
 from safetensors import safe_open
+from safetensors.torch import save_file
 
-class ScheduledFeedForward(nn.Module):
-
-	def __init__(self, total_iterations, dim, inner_dim):
-		super().__init__()
-		self.in_proj = nn.Linear(dim, inner_dim)
-		self.out_proj = nn.Linear(inner_dim, dim)
-		self.Gelu = nn.GELU()
-		self.identity = nn.Identity()
-		self.total_iterations = total_iterations
-		self.iteration = 0
-
-	def forward(self, x):
-		fraction = (1 - self.iteration / self.total_iterations)
-		fraction = max(fraction, 0)
-		x = self.in_proj(x)
-		x = fraction * self.Gelu(x) + (1-fraction * self.identity(x))
-		x = self.out_proj(x)
-		self.iteration += 1		
-		return x
-	
-
-
-def FeedForward(dim, linear, expansion_factor=1):
+def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
-	if not linear:
-		return nn.Sequential(
-			nn.Linear(dim, inner_dim),
-			nn.GELU(),
-			nn.Linear(inner_dim, dim)
-			)
-	else:
-		return nn.Sequential(
-			nn.Linear(dim, inner_dim),
-			nn.Linear(inner_dim, dim)
-			)
+	return nn.Sequential(
+		nn.Linear(dim, inner_dim),
+		nn.GELU(),
+		nn.Linear(inner_dim, dim)
+	)
 
 def ConvForward(dim, expansion_factor=1):
 	inner_dim = int(dim * expansion_factor)
@@ -65,14 +36,20 @@ def ConvForward(dim, expansion_factor=1):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, clm_mask=True, expand_conv=False, linear=False):
+	def __init__(self, dim, length, clm_mask=True, expand_conv=False):
 		super().__init__()
+		self.patch_layernorm = nn.LayerNorm(dim)
+		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
-		self.conv = nn.Conv1d(length, length, 1)
+		self.patch_ff = FeedForward(dim)
+		if expand_conv:
+			self.conv = ConvForward(length)
+		else:
+			self.conv = nn.Conv1d(length, length, 1)
 		self.clm_mask = clm_mask
-		self.conv = ConvForward(length)
 		self.expand_conv = expand_conv
+		self.softmax = nn.Softmax(dim=0)
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -80,12 +57,7 @@ class MixerBlock(nn.Module):
 
 		# for CLM training, apply lower triangular mask to convolution weights
 		if self.clm_mask:
-			if not self.expand_conv:
-				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
-				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-			else:
+			if self.expand_conv:
 				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
 				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
@@ -93,11 +65,37 @@ class MixerBlock(nn.Module):
 
 				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+
 				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
+			else:
+				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+				# # softmax weights
+				# self.conv.weight.data = self.softmax(self.conv.weight.data)
+
+				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
+				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
+
+		else:
+			# reshaped_conv = rearrange(self.conv.weight, 'f d p -> (p f) d', p=1)
+			# masked_conv = torch.diagonal_scatter(reshaped_conv, torch.zeros(self.length-1), 1)
+			# self.conv.weight.data = rearrange(masked_conv, '(p f) d -> f d p', p=1).contiguous()
+
+			masked_convf = torch.tril(rearrange(self.convf.weight, 'f d p -> p f d'))
+			self.convf.weight.data = rearrange(masked_convf, 'p f d -> f d p').contiguous()
+
+			masked_convr = torch.triu(rearrange(self.convr.weight, 'f d p -> p f d'), diagonal=2)
+			self.convr.weight.data = rearrange(masked_convr, 'p f d -> f d p').contiguous()
+
 		residual = x
+		x = self.seq_layernorm(x)
 		x = self.conv(x) + residual
+		residual = x
+		x = self.patch_layernorm(x)
+		x = self.patch_ff(x) + residual
 		return x
 
 
@@ -111,8 +109,7 @@ class LanguageMixer(nn.Module):
 				dim = dim,
 				length = tokenized_length,
 				clm_mask=True,
-				expand_conv=True,
-				linear=True,
+				expand_conv=False
 				)
 			for i in range(depth)]
 			).to(device)
@@ -136,16 +133,15 @@ class LanguageMixer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
-# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_16k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_textbooks_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
-print (tokenizer.is_fast)
+print ('Vocab size: ', n_vocab)
 
-tokenized_length = 64
-dim = 4096
+tokenized_length = 512
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 1) 
+model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
 # one = torch.tensor([[[1, 4, 3]]]).to(device)
 # two = torch.tensor([[[1, 2, 3]]]).to(device)
@@ -168,12 +164,11 @@ def count_parameters(model):
 	return total_params
 
 count_parameters(model)
-# cached dataset
-train_text = load_dataset("roneneldan/TinyStories", split="train")
-valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+train_text = load_dataset("open-phi/textbooks", split="train")[100:]['markdown']
+valid_text = load_dataset("open-phi/textbooks", split="train")[:100]['markdown']
 
 
-def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
+def tile_inputs(input_ids, tile_overlap=200, tile_size=1024):
 	text_length = len(input_ids[0])
 	assert text_length > tile_overlap, 'Text must be longer than overlap to tile'
 	tiled_arr = []
@@ -238,9 +233,9 @@ def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
 	max_length = 512
 
-	for i in range(1000000):
+	for i in range(len(train_text)):
 		input_ids = tokenizer.encode(
-			train_text[i]['text'],
+			train_text[i],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=False,
@@ -258,7 +253,7 @@ def tokenize_input(train_text, test_text):
 	for i in range(len(test_text)):
 		if test_text[i]:
 			input_ids = tokenizer.encode(
-				test_text[i]['text'],
+				test_text[i],
 				add_special_tokens=False,
 				return_tensors='pt',
 				truncation=False,
@@ -278,17 +273,27 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-load_safetensors = False
-if load_safetensors and os.path.exists('/home/bbadger/Desktop/tinystories_tokens.safetensors'):
-	tensors = {}
-	with safe_open("/home/bbadger/Desktop/tinystories_tokens.safetensors", framework="pt", device="cpu") as f:
-		for key in f.keys():
-			tensors[key] = f.get_tensor(key)
-	train_data, test_data = tensors['train_data'], tensors['test_data']
-else:
-	train_data, test_data = batch_tokenize_input(train_text, valid_text)
-train_data, test_data = debatch_input(train_data), debatch_input(test_data)
-print ('data loaded')
+tokenize_now=True
+if tokenize_now:
+        train_data, test_data = tokenize_input(train_text, valid_text)
+        #train_data, test_data = debatch_input(train_data), debatch_input(test_data)
+
+        data_dict = {
+        'train_data': torch.stack(train_data, dim=0),
+        'test_data': torch.stack(test_data, dim=0)
+        }
+
+	#save_file(data_dict, '/home/bbadger/Desktop/tokenized_textbook_16k.safetensors')
+        #print ('tokens saved')
+
+#tensors = {}
+#with safe_open("/home/bbadger/Desktop/tokenized_textbook_8k.safetensors", framework="pt", device="cpu") as f:
+#   for key in f.keys():
+#       tensors[key] = f.get_tensor(key)
+
+#train_data = list(tensors['train_data'])
+#test_data = list(tensors['test_data'])
+print ('Train/Test dataset length: ', len(train_data), len(test_data))
 
 def reformat_inputs(train_data, test_data):
 	# reformat inputs for transformer modelz`
@@ -308,16 +313,16 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=9,
-	per_device_train_batch_size=64,
-	per_device_eval_batch_size=64,
+	num_train_epochs=10,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=1e-4,
+	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/mixer_4096_t16k_expandconv',
+	output_dir='~/Desktop/textbooks_mixer_1024_n8_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

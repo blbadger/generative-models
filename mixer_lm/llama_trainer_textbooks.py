@@ -26,7 +26,7 @@ llama_config_kwargs = {
     'intermediate_size': 4*dim,
     'num_hidden_layers': 8,
     'num_attention_heads': 4,
-    'vocab_size': 4096
+    'vocab_size': 8000
 }
 
 # Initializing a LLaMA model
@@ -39,7 +39,7 @@ model = LlamaForCausalLM(configuration).float()
 # model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_textbooks_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
@@ -56,7 +56,7 @@ print (model)
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
 	total_params = 0
-	print ()
+	
 	for name, parameter in model.named_parameters():
 		if not parameter.requires_grad:
 			continue
@@ -68,11 +68,10 @@ def count_parameters(model):
 	return total_params
 
 count_parameters(model)
+train_text = load_dataset("open-phi/textbooks", split="train")[200:]['markdown']
+valid_text = load_dataset("open-phi/textbooks", split="train")[:200]['markdown']
 
-train_text = load_dataset("roneneldan/TinyStories", split="train")
-valid_text = load_dataset("roneneldan/TinyStories", split="validation")
-
-def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
+def tile_inputs(input_ids, tile_overlap=200, tile_size=1024):
 	text_length = len(input_ids[0])
 	assert text_length > tile_overlap, 'Text must be longer than overlap to tile'
 	tiled_arr = []
@@ -101,13 +100,13 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000, batch_size=1024):
 	train_data, test_data = [], []
-	max_length = 512
+	max_length = 1024
 
 	for i in range(0, length, batch_size):
 		input_ids = tokenizer.batch_encode_plus(
-			train_text[i:i+batch_size]['text'],
+			train_text[i:i+batch_size],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=True,
@@ -118,7 +117,7 @@ def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024)
 
 	for i in range(0, len(test_text), batch_size):
 		input_ids = tokenizer.batch_encode_plus(
-			test_text[i:i+batch_size]['text'],
+			test_text[i:i+batch_size],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=True,
@@ -136,9 +135,10 @@ def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
 	max_length = 512
 
-	for i in range(500000):
+	for i in range(len(train_text)):
+		if i % 100 == 0: print (i)
 		input_ids = tokenizer.encode(
-			train_text[i]['text'],
+			train_text[i],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=False,
@@ -147,17 +147,16 @@ def tokenize_input(train_text, test_text):
 		)
 
 		if len(input_ids[0]) > max_length:
-			pass
-			# input_set = tile_inputs(input_ids, tile_size=max_length)
-			# for inp in input_set:
-			# 	train_data.append(inp)
+			input_set = tile_inputs(input_ids, tile_size=max_length)
+			for inp in input_set:
+				train_data.append(inp)
 		else:
 			train_data.append(input_ids)
 
 	for i in range(len(test_text)):
 		if test_text[i]:
 			input_ids = tokenizer.encode(
-				test_text[i]['text'],
+				test_text[i],
 				add_special_tokens=False,
 				return_tensors='pt',
 				truncation=False,
@@ -166,36 +165,39 @@ def tokenize_input(train_text, test_text):
 			)
 
 			if len(input_ids[0]) > max_length:
-				pass
-				# input_set = tile_inputs(
-				# 	input_ids,
-				# 	tile_size=max_length
-				# )
-				# for inp in input_set:
-				# 	test_data.append(inp)
+				
+				input_set = tile_inputs(
+					input_ids,
+					tile_size=max_length
+				)
+				for inp in input_set:
+					test_data.append(inp)
 			else:
 				test_data.append(input_ids)
 
 	return train_data, test_data
 
-# train_data, test_data = batch_tokenize_input(train_text, valid_text)
-# train_data, test_data = debetach_input(train_data), debatch_input(test_data)
+tokenize_now=True
+if tokenize_now:
+	train_data, test_data = tokenize_input(train_text, valid_text)
+	#train_data, test_data = debatch_input(train_data), debatch_input(test_data)
 
-#data_dict = {
-#	'train_data': torch.stack(train_data, dim=0), 
-#	'test_data': torch.stack(test_data, dim=0)
-#}
+	data_dict = {
+	'train_data': torch.stack(train_data, dim=0), 
+	'test_data': torch.stack(test_data, dim=0)
+	}
 
-#save_file(data_dict, '/home/bbadger/Desktop/tinystories_tokens.safetensors')
-#print ('tokens saved')
-tensors = {}
-with safe_open("/home/bbadger/Desktop/tinystories_tokens.safetensors", framework="pt", device="cpu") as f:
-   for key in f.keys():
-       tensors[key] = f.get_tensor(key)
+	save_file(data_dict, '/home/bbadger/Desktop/tokenized_textbook_8k.safetensors')
+	print ('tokens saved')
+else:
+	tensors = {}
+	with safe_open("/home/bbadger/Desktop/tokenized_textbook_8k.safetensors", framework="pt", device="cpu") as f:
+		for key in f.keys():
+			tensors[key] = f.get_tensor(key)
 
-train_data = list(tensors['train_data'])
-test_data = list(tensors['test_data'])
-
+	train_data = list(tensors['train_data'])
+	test_data = list(tensors['test_data'])
+print (train_data[0].shape)
 
 def reformat_inputs(train_data, test_data):
 	# reformat inputs for transformer model
@@ -213,7 +215,7 @@ if isinstance(model, LlamaForCausalLM):
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=20,
+	num_train_epochs=10,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
@@ -222,7 +224,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/llama_512_nonorm',
+	output_dir='~/Desktop/textbooks_llama_512_n8_h4_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )

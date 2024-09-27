@@ -9,7 +9,7 @@ from transformers import TextDataset, Trainer, TrainingArguments, AutoModelWithL
 import torch.nn as nn
 import mlflow
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
@@ -21,12 +21,13 @@ from safetensors import safe_open
 device = 0 if torch.cuda.is_available else 'cpu'
 
 dim = 512 
+context_length = 512
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
     'num_hidden_layers': 8,
     'num_attention_heads': 4,
-    'vocab_size': 4096
+    'vocab_size': 8000
 }
 
 # Initializing a LLaMA model
@@ -39,7 +40,7 @@ model = LlamaForCausalLM(configuration).float()
 # model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
@@ -56,7 +57,7 @@ print (model)
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
 	total_params = 0
-	print ()
+	
 	for name, parameter in model.named_parameters():
 		if not parameter.requires_grad:
 			continue
@@ -68,11 +69,30 @@ def count_parameters(model):
 	return total_params
 
 count_parameters(model)
+#train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(50000)
+#test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(50000)
+#print ('datasets loaded')
 
-train_text = load_dataset("roneneldan/TinyStories", split="train")
-valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+def tokenization(example):
+    tokens = tokenizer.batch_encode_plus(
+			example['text'],
+			add_special_tokens=False,
+			return_tensors='pt',
+			truncation=True,
+			max_length=512,
+			padding='max_length',
+		)
+    return tokens
 
-def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
+#train_dataset = train_text.map(tokenization, batched=True)
+#test_dataset = test_text.map(tokenization, batched=True)
+#train_dataset.save_to_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-train")
+#test_dataset.save_to_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-test")
+
+train_dataset = load_from_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-train")
+test_dataset = load_from_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-test")
+
+def tile_inputs(input_ids, tile_overlap=200, tile_size=512):
 	text_length = len(input_ids[0])
 	assert text_length > tile_overlap, 'Text must be longer than overlap to tile'
 	tiled_arr = []
@@ -101,44 +121,14 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
-	train_data, test_data = [], []
-	max_length = 512
-
-	for i in range(0, length, batch_size):
-		input_ids = tokenizer.batch_encode_plus(
-			train_text[i:i+batch_size]['text'],
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=True,
-			max_length=max_length,
-			padding='max_length'
-		).input_ids
-		train_data.append(input_ids)
-
-	for i in range(0, len(test_text), batch_size):
-		input_ids = tokenizer.batch_encode_plus(
-			test_text[i:i+batch_size]['text'],
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=True,
-			max_length=max_length,
-			padding='max_length'
-		).input_ids
-		test_data.append(input_ids)
-
-	train_data = debatch_input(train_data)
-	test_data = debatch_input(test_data)
-
-	return train_data, test_data
-
 def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
 	max_length = 512
 
-	for i in range(500000):
+	for i, sample in enumerate(train_text):
+		if i % 10000 == 0: print (i)
 		input_ids = tokenizer.encode(
-			train_text[i]['text'],
+			sample['text'],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=False,
@@ -147,17 +137,16 @@ def tokenize_input(train_text, test_text):
 		)
 
 		if len(input_ids[0]) > max_length:
-			pass
-			# input_set = tile_inputs(input_ids, tile_size=max_length)
-			# for inp in input_set:
-			# 	train_data.append(inp)
+			input_set = tile_inputs(input_ids, tile_size=max_length)
+			for inp in input_set:
+				train_data.append(inp)
 		else:
 			train_data.append(input_ids)
 
 	for i in range(len(test_text)):
 		if test_text[i]:
 			input_ids = tokenizer.encode(
-				test_text[i]['text'],
+				test_text[i],
 				add_special_tokens=False,
 				return_tensors='pt',
 				truncation=False,
@@ -166,36 +155,41 @@ def tokenize_input(train_text, test_text):
 			)
 
 			if len(input_ids[0]) > max_length:
-				pass
-				# input_set = tile_inputs(
-				# 	input_ids,
-				# 	tile_size=max_length
-				# )
-				# for inp in input_set:
-				# 	test_data.append(inp)
+				
+				input_set = tile_inputs(
+					input_ids,
+					tile_size=max_length
+				)
+				for inp in input_set:
+					test_data.append(inp)
 			else:
 				test_data.append(input_ids)
 
 	return train_data, test_data
 
-# train_data, test_data = batch_tokenize_input(train_text, valid_text)
-# train_data, test_data = debetach_input(train_data), debatch_input(test_data)
+tokenize=False
+if tokenize:
+	print ('tokenizing input')
+	train_data, test_data = tokenize_input(train_text, valid_text)
+	#train_data, test_data = debatch_input(train_data), debatch_input(test_data)
 
-#data_dict = {
-#	'train_data': torch.stack(train_data, dim=0), 
-#	'test_data': torch.stack(test_data, dim=0)
-#}
+	data_dict = {
+	'train_data': torch.stack(train_data, dim=0), 
+	'test_data': torch.stack(test_data, dim=0)
+	}
 
-#save_file(data_dict, '/home/bbadger/Desktop/tinystories_tokens.safetensors')
-#print ('tokens saved')
-tensors = {}
-with safe_open("/home/bbadger/Desktop/tinystories_tokens.safetensors", framework="pt", device="cpu") as f:
-   for key in f.keys():
-       tensors[key] = f.get_tensor(key)
+	save_file(data_dict, '/home/bbadger/Desktop/tokenized_fineweb10b_8k.safetensors')
+	print ('tokens saved')
+load_input = False
+if load_input:
+	tensors = {}
+	with safe_open("/home/bbadger/Desktop/tokenized_fineweb10b_8k.safetensors", framework="pt", device="cpu") as f:
+		for key in f.keys():
+			tensors[key] = f.get_tensor(key)
 
-train_data = list(tensors['train_data'])
-test_data = list(tensors['test_data'])
-
+	train_data = list(tensors['train_data'])
+	test_data = list(tensors['test_data'])
+	print (train_data[0].shape)
 
 def reformat_inputs(train_data, test_data):
 	# reformat inputs for transformer model
@@ -207,30 +201,29 @@ def reformat_inputs(train_data, test_data):
 	return train_data, test_data
 
 
-if isinstance(model, LlamaForCausalLM):
-	reformat_inputs(train_data, test_data)
 
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=20,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	num_train_epochs=2,
+	per_device_train_batch_size=64,
+	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/llama_512_nonorm',
+	output_dir='~/Desktop/fineweb_llama_512_n8_h4',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
+	max_steps=200000
 )
 
 trainer = transformers.Trainer(
 	model=model,
-	train_dataset=train_data,
-	eval_dataset=test_data,
+	train_dataset=train_dataset,
+	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )

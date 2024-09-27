@@ -1,6 +1,6 @@
 from datasets import load_dataset
 
-# dataset = load_dataset("roneneldan/TinyStories")
+dataset = load_dataset("open-phi/textbooks")
 
 from pathlib import Path
 from tokenizers import ByteLevelBPETokenizer
@@ -50,8 +50,8 @@ dataset = TextDataset(file_path, batch_size=1024)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=None)
 
 # Train the new tokenizer
-tokenizer = old_tokenizer.train_new_from_iterator(dataloader, 4096)
-tokenizer.save_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = old_tokenizer.train_new_from_iterator(dataloader, 8192)
+tokenizer.save_pretrained("/home/bbadger/Desktop/tiny_token_8k")
 print ("Tokenizer saved")
 
 
