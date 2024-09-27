@@ -69,9 +69,6 @@ def count_parameters(model):
 	return total_params
 
 count_parameters(model)
-#train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(50000)
-#test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(50000)
-#print ('datasets loaded')
 
 def tokenization(example):
     tokens = tokenizer.batch_encode_plus(
@@ -84,41 +81,25 @@ def tokenization(example):
 		)
     return tokens
 
-#train_dataset = train_text.map(tokenization, batched=True)
-#test_dataset = test_text.map(tokenization, batched=True)
-#train_dataset.save_to_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-train")
-#test_dataset.save_to_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-test")
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test"
 
-train_dataset = load_from_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-train")
-test_dataset = load_from_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-test")
+def map_dataset(train_path, test_path, split_index=50000):
+	"""
+	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
+	"""
+	train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(split_index)
+	test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(split_index)
 
-def tile_inputs(input_ids, tile_overlap=200, tile_size=512):
-	text_length = len(input_ids[0])
-	assert text_length > tile_overlap, 'Text must be longer than overlap to tile'
-	tiled_arr = []
-	i = 0
-	while i < text_length:
-		if i + tile_size <= text_length:
-			tiled_arr.append(input_ids[0][i:i+tile_size])
-		else:
-			# pad the last tile to the appropriate length
-			tokens = input_ids[0][i:i+tile_size]
-			pad_length = tile_size - len(tokens)
-			tokens = torch.nn.functional.pad(tokens,
-											(0, pad_length),
-											 mode='constant',
-											 value=tokenizer.pad_token_id)
-			tiled_arr.append(tokens)
-		i += tile_size - tile_overlap
-	return tiled_arr
+	train_dataset = train_text.map(tokenization, batched=True)
+	test_dataset = test_text.map(tokenization, batched=True)
+	train_dataset.save_to_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-train")
+	test_dataset.save_to_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-test")
+	print ('datasets saved to disk')
+	return
 
-def debatch_input(input_data):
-	output = []
-	for i in range(len(input_data)):
-		if input_data[i].dim() > 1:
-			input_data[i] = input_data[i].unsqueeze(1)
-			output += list(input_data[i])
-	return output
+train_dataset = load_from_disk(train_path)
+test_dataset = load_from_disk(test_path)
 
 
 def tokenize_input(train_text, test_text):
