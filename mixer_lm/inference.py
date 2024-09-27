@@ -277,8 +277,8 @@ model = LanguageMixer(n_vocab, dim, 8).float().to(device)
 
 # model.load_state_dict(torch.load('/home/bbadger/Desktop/tinystories_mixer_512_flat/checkpoint-424000/pytorch_model.bin'))
 
-load_model(bmodel, '/home/bbadger/Desktop/tinystories_mixer_1024_n8_bmask/checkpoint-96000/model.safetensors')
-load_model(model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_1024_f_8/checkpoint-160000/model.safetensors')
+# load_model(bmodel, '/home/bbadger/Desktop/tinystories_mixer_1024_n8_bmask/checkpoint-96000/model.safetensors')
+# load_model(model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_1024_f_8/checkpoint-160000/model.safetensors')
 
 
 # training_arguments = transformers.TrainingArguments(
