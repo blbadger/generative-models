@@ -68,17 +68,17 @@ class MixerHead(nn.Module):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length):
+	def __init__(self, dim, length, heads=4):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
-		self.mixerhead = MixerHead(1024, 512, 512, 4)
+		self.mixerhead = MixerHead(1024, 512, 512, heads)
 		self.patch_ff = FeedForward(dim)
 		# self.conv1 = nn.Conv1d(length, length, 1)
 		# self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		self.conv = nn.Conv1d(length, length, 4, padding='same')
+		# self.conv = nn.Conv1d(length, length, 4, padding='same')
 		# self.conv = nn.Conv1d(length, length, 2, padding='same')
 		# self.conv4 = nn.Conv1d(length, length, 4, padding='same')
 
@@ -112,9 +112,9 @@ class MixerBlock(nn.Module):
 		return x
 
 
-class LanguageMixer(nn.Module):
+class MultiHeadedMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth):
+	def __init__(self, n_vocab, dim, depth, heads=4):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.wte_second = nn.Linear(dim, dim)
@@ -122,6 +122,7 @@ class LanguageMixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = tokenized_length,
+
 				)
 			for i in range(depth)]
 			).to(device)
