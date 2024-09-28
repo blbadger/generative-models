@@ -36,7 +36,7 @@ class MixerHead(nn.Module):
 		self.proj_head = nn.ModuleList(
 			[nn.Linear(dim, hidden_dim)
 			for i in range(n_heads)]
-			).to(device)
+			)
 
 		self.convs = nn.ModuleList(
 			[nn.Conv1d(length, length, 1)
