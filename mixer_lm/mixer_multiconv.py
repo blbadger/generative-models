@@ -76,35 +76,14 @@ class MixerBlock(nn.Module):
 		self.length = length
 		self.mixerhead = MixerHead(1024, 512, 512, heads)
 		self.patch_ff = FeedForward(dim)
-		# self.conv1 = nn.Conv1d(length, length, 1)
-		# self.conv2 = nn.Conv1d(length, length, 2, padding='same')
-		# self.conv = nn.Conv1d(length, length, 4, padding='same')
-		# self.conv = nn.Conv1d(length, length, 2, padding='same')
-		# self.conv4 = nn.Conv1d(length, length, 4, padding='same')
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
 
-		# for CLM training, apply lower triangular mask to convolution weights
-		# rearranged_shape = rearrange(self.conv1.weight, 'f d p -> f (d p)').shape
-		# mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-		# applied_mask = rearrange(self.conv1.weight, 'f d p -> f (d p)') * mask
-		# self.conv1.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
-		# masked_conv2 = torch.tril(rearrange(self.conv2.weight, 'f d p -> p f d'))
-		# self.conv2.weight.data = rearrange(masked_conv2, 'p f d -> f d p').contiguous()
-
-		#masked_conv = torch.tril(rearrange(self.conv.weight, 'f d p -> p f d'))
-		#self.conv.weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
-
-		# masked_conv4 = torch.tril(rearrange(self.conv4.weight, 'f d p -> p f d'))
-		# self.conv4.weight.data = rearrange(masked_conv4, 'p f d -> f d p').contiguous()
-
 		residual = x
 		x = self.seq_layernorm(x)
 		x = self.mixerhead(x) + residual
-		# x = self.conv(x) + residual
 
 		residual = x
 		x = self.patch_layernorm(x)
@@ -114,16 +93,12 @@ class MixerBlock(nn.Module):
 
 class MultiHeadedMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, heads=4):
+	def __init__(self, n_vocab, dim, depth, length=512, heads=4):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.wte_second = nn.Linear(dim, dim)
 		self.mixerblocks = nn.ModuleList(
-			[MixerBlock(
-				dim = dim,
-				length = tokenized_length,
-
-				)
+			[MixerBlock(dim, length)
 			for i in range(depth)]
 			).to(device)
 	
@@ -265,7 +240,7 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_textbooks_8k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tokenizer_textbooks_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
@@ -275,7 +250,7 @@ if __name__ == '__main__':
 	tokenized_length = 512
 	dim = 1024
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
-	model = LanguageMixer(n_vocab, dim, 8)
+	model = LanguageMixer(n_vocab, dim, 8, length)
 
 	# one = torch.tensor([[[1, 2, 3]]]).to(device)
 	# two = torch.tensor([[[1, 4, 3]]]).to(device)
