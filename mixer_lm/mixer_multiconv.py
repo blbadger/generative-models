@@ -45,6 +45,7 @@ class MixerHead(nn.Module):
 
 		self.out_proj = nn.Linear(dim*n_heads, dim)
 		self.softmax = nn.Softmax(dim=-1)		
+		self.GeLU = nn.GELU()
 
 	def forward(self, x: torch.tensor):
 
@@ -58,6 +59,7 @@ class MixerHead(nn.Module):
 			projection = self.proj_head[i](x)
 			conv_projection = self.convs[i](x)
 			hidden_layer.append(conv_projection)
+			hidden_layer = self.GeLU(hidden_layer)
 
 		# concatenate and project multi-headed output
 		hidden_layer = torch.cat(hidden_layer, dim=2)
@@ -136,7 +138,8 @@ class LanguageMixer(nn.Module):
 			x = block(x)
 		
 		output = self.lm_head(x)
-		labels = rearrange(labels, 'b p t -> b (p t)')
+		if labels.dim() > 2:
+			labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
 		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous()

@@ -10,7 +10,7 @@ from transformers import TextDataset, Trainer, TrainingArguments, AutoModelWithL
 import torch.nn as nn
 import mlflow
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
@@ -110,7 +110,7 @@ class LanguageMixer(nn.Module):
 			 self.wte.weight = self.lm_head.weight
 		self.cel = nn.CrossEntropyLoss()
 
-	def forward(self, input_ids, labels=None):
+	def forward(self, input_ids, labels=None, **kwargs):
 		x = input_ids
 		x = x.to(device)
 		x = self.wte(x)
@@ -176,9 +176,9 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=10,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	num_train_epochs=2,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
@@ -188,13 +188,14 @@ training_arguments = transformers.TrainingArguments(
 	output_dir='~/Desktop/textbooks_mixer_1024_n8_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	save_safetensors=True
+	save_safetensors=True,
+	max_steps=200000
 )
 
 trainer = transformers.Trainer(
 	model=model,
-	train_dataset=train_data,
-	eval_dataset=test_data,
+	train_dataset=train_dataset,
+	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
