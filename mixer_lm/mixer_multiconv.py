@@ -265,7 +265,7 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tokenizer_textbooks_8k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_textbooks_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
