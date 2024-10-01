@@ -35,10 +35,10 @@ class ModelArguments:
 		metadata={"help": "Compute dtype for 4bit base model"}
 		)
 	bnb_4bit_quant_storage_type: Optional[str] = field(
-		defualt="uint8"
+		default="uint8"
 		)
 	bnb_4bit_quant_type: Optional[str] = field(
-		defualt="nf4"
+		default="nf4"
 		)
 	use_flash_attn: Optional[bool] = field(
 		default=False
@@ -79,7 +79,7 @@ class DataTrainingArguments:
 		metadata={"help": "If True, tokenizer adds special tokens to each sample being packed"}
 		)
 	splits: Optional[str] = field(
-		defualt="train,test"
+		default="train,test"
 		)
 
 def tile_inputs(input_ids, tile_overlap=20, tile_size=data_args.max_seq_length):
