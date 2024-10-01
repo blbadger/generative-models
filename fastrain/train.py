@@ -67,7 +67,7 @@ class DataTrainingArguments:
 		)
 	dataset_text_field: str = field(
 		default="text",
-		metadata={"help", "Dataset field to use as input text"}
+		metadata={"help": "Dataset field to use as input text"}
 		)
 	max_seq_length: Optional[int] = field(default=512)
 	append_concat_token: Optional[bool] = field(
