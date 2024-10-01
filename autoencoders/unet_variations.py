@@ -140,11 +140,22 @@ def count_parameters(model):
 # model = UNetWide(3, 3).to(device)
 model = UNetDeepWide(3, 3)
 # model = UNetWideHidden(3, 3).to(device)
-# loss_fn = torch.nn.MSELoss(reduction='none')
-loss_fn = torch.nn.BCELoss()
+loss_fn = torch.nn.MSELoss(reduction='none')
+# loss_fn = torch.nn.BCELoss()
 cosine_loss = torch.nn.CosineSimilarity(dim=0)
 count_parameters(model)
 
+def load_model(model):
+    model = model.to('cpu')
+    checkpoint = torch.load('/home/bbadger/Desktop/churches_unetdeepwide/24')
+    reformatted_checkpoint = OrderedDict()
+    for key, value in checkpoint.items():
+        reformatted_checkpoint[key[7:]] = value
+    model.load_state_dict(reformatted_checkpoint)
+    del checkpoint
+    return model.to("cpu")
+
+#model = load_model(model)
 
 def train_autoencoder(model, dataset='churches'):
     epochs = 500
@@ -186,20 +197,21 @@ def train_autoencoder(model, dataset='churches'):
             optimizer.zero_grad()
             batch = batch.to(device_id) # discard class labels
             output = ddp_model(batch) 
-            output = torch.clip(output, min=0, max=1)
+  #          output = torch.clip(output, min=0, max=1)
             loss = loss_fn(output, batch)
-            # loss  = torch.masked_select(loss, loss > 0.01)
-            # loss_size = loss.shape
-            # loss = torch.mean(loss)
+            loss = torch.masked_select(loss, loss > 0.01)
+            loss_size = loss.shape
+            loss = torch.mean(loss)
             total_loss += loss.item()
             loss.backward()
             optimizer.step()
 
         if rank == 0:
-            checkpoint_path = f'/home/bbadger/Desktop/churches_unetdeepwide_bce/{epoch}'
-            torch.save(ddp_model.state_dict(), checkpoint_path)
+            checkpoint_path = f'/home/bbadger/Desktop/churches_unetdeepwide/{epoch}'
+            if epoch % 4 == 0: torch.save(ddp_model.state_dict(), checkpoint_path)
             tqdm.write(f"Epoch {epoch} completed in {time.time() - start_time} seconds")
             tqdm.write(f"Average Loss: {round(total_loss / step, 5)}")
+            tqdm.write(f"Loss shape: {loss_size}")
         dist.barrier()
 
     dist.destroy_process_group()
