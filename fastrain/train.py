@@ -47,7 +47,7 @@ class ModelArguments:
 		default=True
 		)
 	use_8bit_quantization: Optional[bool] = field(
-		defalt=False
+		default=False
 		)
 	use_4bit_quantization: Optional[bool] = field(
 		default=False
