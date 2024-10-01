@@ -143,7 +143,7 @@ def main(model_args, data_args, training_args):
 
 	data_path = data_args.dataset_path
 	valid_text = load_dataset(data_path, split="train")[:200]['markdown']
-	if os.path.exists(data_path_path):
+	if os.path.exists(data_path):
 		dataset = load_from_disk(data_path)
 	else:
 		dataset = load_dataset(data_path)
