@@ -8,7 +8,7 @@ import trl
 import torch
 from transformers import HfArgumentParser, TrainingArguments, set_seed
 from trl import SFTTrainer
-from utils import create_and_prepare_model, create_datasets
+from utils import create_and_prepare_model
 import json
 import mlflow
 from transformers import DataCollatorForLanguageModeling
