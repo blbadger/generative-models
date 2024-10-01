@@ -187,8 +187,8 @@ def reformat_inputs(train_data, test_data):
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=64,
-	per_device_eval_batch_size=64,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,

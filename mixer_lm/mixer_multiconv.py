@@ -59,7 +59,6 @@ class MixerHead(nn.Module):
 			projection = self.proj_head[i](x)
 			conv_projection = self.convs[i](x)
 			hidden_layer.append(conv_projection)
-			hidden_layer = self.GeLU(hidden_layer)
 
 		# concatenate and project multi-headed output
 		hidden_layer = torch.cat(hidden_layer, dim=2)
@@ -100,14 +99,13 @@ class MultiHeadedMixer(nn.Module):
 		self.mixerblocks = nn.ModuleList(
 			[MixerBlock(dim, length)
 			for i in range(depth)]
-			).to(device)
+			)
 	
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		self.cel = nn.CrossEntropyLoss()
 
-	def forward(self, input_ids, labels=None):
+	def forward(self, input_ids, labels=None, **kwargs):
 		x = input_ids
-		x = x.to(device)
 		x = self.wte(x)
 		for block in self.mixerblocks:
 			x = block(x)

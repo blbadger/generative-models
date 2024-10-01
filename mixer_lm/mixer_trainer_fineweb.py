@@ -16,6 +16,7 @@ from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
 from safetensors import safe_open
 from safetensors.torch import save_file
+from mixer_multiconv import MultiHeadedMixer
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -101,7 +102,7 @@ class LanguageMixer(nn.Module):
 				dim = dim,
 				length = tokenized_length,
 				clm_mask=True,
-				expand_conv=False
+				expand_conv=True
 				)
 			for i in range(depth)]
 			).to(device)
@@ -145,10 +146,10 @@ n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
 tokenized_length = 512
-dim = 1024
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+#model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
 model = LanguageMixer(n_vocab, dim, 8).float().to(device)
-
 print (model)
 count_parameters(model)
 
@@ -185,7 +186,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/textbooks_mixer_1024_n8_b32',
+	output_dir='~/Desktop/fineweb_mixer_512_n8',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
@@ -201,5 +202,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-trainer.train()
+trainer.train("/home/bbadger/Desktop/fineweb_mixer_512_n8/checkpoint-44000")
 
