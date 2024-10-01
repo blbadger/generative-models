@@ -27,10 +27,10 @@ class ModelArguments:
 	lora_target_modules: Optional[str] = field(
 		default="q_proj,k_proj,v_proj,o_proj,up_proj,down_proj,gate_proj",
 		)
-	bnb_nested_quant: Optional[bool] = field(
+	use_nested_quant: Optional[bool] = field(
 		default=False
 		)
-	bnb_4bit_compute_dtype: Optional[str] = field(
+	bnb_4bit_compute_type: Optional[str] = field(
 		default="float16",
 		metadata={"help": "Compute dtype for 4bit base model"}
 		)
