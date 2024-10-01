@@ -141,13 +141,15 @@ def main(model_args, data_args, training_args):
 	if training_args.gradient_checkpointing:
 		training_args.gradient_checkpointing_kwargs = {"use_reentrant": model_args.use_reentrant}
 
-	if os.path.exists(data_args.dataset_path):
-		dataset = load_from_disk(data_args.dataset_path)
+	data_path = data_args.dataset_path
+	valid_text = load_dataset(, split="train")[:200]['markdown']
+	if os.path.exists(data_path_path):
+		dataset = load_from_disk(data_path)
 	else:
-		dataset = load_dataset(data_args.dataset_path)
+		dataset = load_dataset(data_path)
 
-	train_data = tokenize_input(dataset["train"])
-	test_data = tokenize_input(dataset["test"])
+	train_data = tokenize_input(dataset["train"])[:50]
+	test_data = tokenize_input(dataset["train"])[:10]
 	train_text, test_text = detokenize_input(train_data), detokenize_input(test_data)
 	print ("Training samples: ", len(train_text))
 	print ("Test samples: ", len(test_text))
