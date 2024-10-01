@@ -160,7 +160,7 @@ def main(model_args, data_args, training_args):
 	train_text = {'text': list(train_text)}
 	train_text_dataset = Dataset.from_dict(train_text)
 
-	test_text = ['text': list(test_text)]
+	test_text = {'text': list(test_text)}
 	test_text_dataset = Dataset.from_dict(test_text)
 
 	trainer = SFTTrainer(
