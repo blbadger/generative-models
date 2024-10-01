@@ -52,7 +52,7 @@ class ModelArguments:
 	use_4bit_quantization: Optional[bool] = field(
 		default=False
 		)
-	use_reetrant: Optional[bool] = field(
+	use_reentrant: Optional[bool] = field(
 		default=False
 		)
 
