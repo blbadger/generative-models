@@ -47,6 +47,8 @@ def create_and_prepare_model(args, data_args, training_args):
 			else args.lora_target_modules
 			)
 
+	# TODO: add special token compatibility
+	special_tokens=None
 	if special_tokens is not None:
 		tokenizer = AutoTokenizer.from_pretrained(
 			args.model_name_or_path,
