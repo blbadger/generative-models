@@ -11,8 +11,8 @@ def create_and_prepare_model(args, data_args, training_args):
 	quant_storage_dtype = None
 
 	if args.use_4bit_quantization:
-		compute_dtype = getattr(torch, args.bnb_4bit_compute_dtype)
-		quant_storage_dtype = getattr(torch, args.bnb_4bit_quant_storage_dtype)
+		compute_dtype = getattr(torch, args.bnb_4bit_compute_type)
+		quant_storage_dtype = getattr(torch, args.bnb_4bit_quant_storage_type)
 
 		bnb_config = BitsAndBytesConfig(
 			load_in_4bit=args.use_4bit_quantization,
