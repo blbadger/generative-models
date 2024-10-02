@@ -34,5 +34,5 @@ accelerate launch --config_file "configs/fsdp_config_qlora.yaml" train.py \
 --use_4bit_quantization True \
 --use_nested_quant True \
 --bnb_4bit_compute_type "float16" \
---bnb_4bit_quant_storage_type "float16" \
+--bnb_4bit_quant_storage_type "float32" \
 --report_to "none"
