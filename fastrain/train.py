@@ -106,7 +106,7 @@ def tile_inputs(input_ids, tile_overlap=20, tile_size=1024):
 
 	return tiled_arr
 
-def tokenize_input(text, tile_size=1024, overlap_size=20):
+def tokenize_input(text, tokenizer, tile_size=1024, overlap_size=20,):
 	# assumes dataset is not large (< 1b samples) and can be loaded in memory
 	all_data = []
 	for i, text_file in enumerate(text):
@@ -124,7 +124,7 @@ def tokenize_input(text, tile_size=1024, overlap_size=20):
 	return all_data
 
 
-def detokenize_input(tokens):
+def detokenize_input(tokens, tokenizer):
 	text = []
 	for i, tensor in enumerate(tokens):
 		text_input = tokenizer.decode(tensor, skip_special_tokens=True)
@@ -148,9 +148,9 @@ def main(model_args, data_args, training_args):
 	else:
 		dataset = load_dataset(data_path)
 
-	train_data = tokenize_input(dataset["train"], tile_size=data_args.max_seq_length)[:50]
-	test_data = tokenize_input(dataset["train"], tile_size=data_args.max_seq_length)[:10]
-	train_text, test_text = detokenize_input(train_data), detokenize_input(test_data)
+	train_data = tokenize_input(dataset["train"], tokenizer, tile_size=data_args.max_seq_length)[:50]
+	test_data = tokenize_input(dataset["train"], tokenizer, tile_size=data_args.max_seq_length)[:10]
+	train_text, test_text = detokenize_input(train_data, tokenizer), detokenize_input(test_data, tokenizer)
 	print ("Training samples: ", len(train_text))
 	print ("Test samples: ", len(test_text))
 
