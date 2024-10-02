@@ -8,7 +8,7 @@ from peft import LoraConfig
 
 def create_and_prepare_model(args, data_args, training_args):
 	peft_config = None
-	torch_dtype = torch.float32
+	torch_dtype = torch.float16
 	model = AutoModelForCausalLM.from_pretrained(
 			args.model_name_or_path,
 			trust_remote_code=True,
