@@ -1,6 +1,7 @@
 accelerate launch --config_file "configs/fsdp_config_allparams.yaml" train.py \
 --seed 100 \
 --model_name_or_path "/home/bbadger/Desktop/llama-3.1-8b-instruct" \
+--dataset_path "open-phi/textbooks" \
 --add_special_tokens False \
 --append_concat_token False \
 --max_seq_len 1024 \
