@@ -1,6 +1,6 @@
 import os
 import sys
-from dataclasses ipmort dataclass, field
+from dataclasses import dataclass, field
 from typing import Optional
 
 import transformers
@@ -8,7 +8,7 @@ import trl
 import torch
 from transformers import HfArgumentParser, TrainingArguments, set_seed
 from trl import SFTTrainer
-from utils import create_and_prepare_model, create_datasets
+from utils import create_and_prepare_model
 import json
 import mlflow
 from transformers import DataCollatorForLanguageModeling
@@ -27,18 +27,18 @@ class ModelArguments:
 	lora_target_modules: Optional[str] = field(
 		default="q_proj,k_proj,v_proj,o_proj,up_proj,down_proj,gate_proj",
 		)
-	bnb_nested_quant: Optional[bool] = field(
+	use_nested_quant: Optional[bool] = field(
 		default=False
 		)
 	bnb_4bit_compute_dtype: Optional[str] = field(
 		default="float16",
 		metadata={"help": "Compute dtype for 4bit base model"}
 		)
-	bnb_4bit_quant_storage_type: Optional[str] = field(
-		defualt="uint8"
+	bnb_4bit_quant_storage_dtype: Optional[str] = field(
+		default="uint8"
 		)
 	bnb_4bit_quant_type: Optional[str] = field(
-		defualt="nf4"
+		default="nf4"
 		)
 	use_flash_attn: Optional[bool] = field(
 		default=False
@@ -47,12 +47,12 @@ class ModelArguments:
 		default=True
 		)
 	use_8bit_quantization: Optional[bool] = field(
-		defalt=False
+		default=False
 		)
 	use_4bit_quantization: Optional[bool] = field(
 		default=False
 		)
-	use_reetrant: Optional[bool] = field(
+	use_reentrant: Optional[bool] = field(
 		default=False
 		)
 
@@ -67,7 +67,7 @@ class DataTrainingArguments:
 		)
 	dataset_text_field: str = field(
 		default="text",
-		metadata={"help", "Dataset field to use as input text"}
+		metadata={"help": "Dataset field to use as input text"}
 		)
 	max_seq_length: Optional[int] = field(default=512)
 	append_concat_token: Optional[bool] = field(
@@ -79,10 +79,10 @@ class DataTrainingArguments:
 		metadata={"help": "If True, tokenizer adds special tokens to each sample being packed"}
 		)
 	splits: Optional[str] = field(
-		defualt="train,test"
+		default="train,test"
 		)
 
-def tile_inputs(input_ids, tile_overlap=20, tile_size=data_args.max_seq_length):
+def tile_inputs(input_ids, tokenizer, tile_overlap=20, tile_size=1024):
 	text_length = len(input_ids[0])
 	assert text_length >= tile_overlap, "Text must be longer than overlap to tile"
 
@@ -106,7 +106,7 @@ def tile_inputs(input_ids, tile_overlap=20, tile_size=data_args.max_seq_length):
 
 	return tiled_arr
 
-def tokenize_input(text, tile_size=data_args.max_seq_length, overlap_size=20):
+def tokenize_input(text, tokenizer, tile_size=1024, overlap_size=20):
 	# assumes dataset is not large (< 1b samples) and can be loaded in memory
 	all_data = []
 	for i, text_file in enumerate(text):
@@ -119,12 +119,12 @@ def tokenize_input(text, tile_size=data_args.max_seq_length, overlap_size=20):
 
 		if len(input_ids[0]) < overlap_size:
 			continue
-		data = tile_inputs(input_ids, tile_size=tile_size, tile_overlap=overlap_size)
+		data = tile_inputs(input_ids, tokenizer, tile_size=tile_size, tile_overlap=overlap_size)
 		all_data += data
 	return all_data
 
 
-def detokenize_input(tokens):
+def detokenize_input(tokens, tokenizer):
 	text = []
 	for i, tensor in enumerate(tokens):
 		text_input = tokenizer.decode(tensor, skip_special_tokens=True)
@@ -141,14 +141,16 @@ def main(model_args, data_args, training_args):
 	if training_args.gradient_checkpointing:
 		training_args.gradient_checkpointing_kwargs = {"use_reentrant": model_args.use_reentrant}
 
-	if os.path.exists(data_args.dataset_path):
-		dataset = load_from_disk(data_args.dataset_path)
-	else:
-		dataset = load_dataset(data_args.dataset_path)
+	data_path = data_args.dataset_path
+	dataset = load_dataset(data_path, split="train")[:10]['markdown']
+	# if os.path.exists(data_path):
+	# 	dataset = load_from_disk(data_path)
+	# else:
+	# 	dataset = load_dataset(data_path)
 
-	train_data = tokenize_input(dataset["train"])
-	test_data = tokenize_input(dataset["test"])
-	train_text, test_text = detokenize_input(train_data), detokenize_input(test_data)
+	train_data = tokenize_input(dataset, tokenizer, tile_size=data_args.max_seq_length)
+	test_data = tokenize_input(dataset, tokenizer, tile_size=data_args.max_seq_length)
+	train_text, test_text = detokenize_input(train_data, tokenizer), detokenize_input(test_data, tokenizer)
 	print ("Training samples: ", len(train_text))
 	print ("Test samples: ", len(test_text))
 
@@ -158,7 +160,7 @@ def main(model_args, data_args, training_args):
 	train_text = {'text': list(train_text)}
 	train_text_dataset = Dataset.from_dict(train_text)
 
-	test_text = ['text': list(test_text)]
+	test_text = {'text': list(test_text)}
 	test_text_dataset = Dataset.from_dict(test_text)
 
 	trainer = SFTTrainer(

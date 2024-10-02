@@ -3,7 +3,7 @@ from enum import Enum
 import torch
 from datasets import DatasetDict, load_dataset, load_from_disk
 from datasets.builder import DatasetGenerationError
-from transformers import AudoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import LoraConfig
 
 def create_and_prepare_model(args, data_args, training_args):
@@ -47,6 +47,8 @@ def create_and_prepare_model(args, data_args, training_args):
 			else args.lora_target_modules
 			)
 
+	# TODO: add special token compatibility
+	special_tokens=None
 	if special_tokens is not None:
 		tokenizer = AutoTokenizer.from_pretrained(
 			args.model_name_or_path,
