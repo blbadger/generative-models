@@ -184,6 +184,7 @@ def main(model_args, data_args, training_args):
 	checkpoint=None
 	if training_args.resume_from_checkpoint:
 		checkpoint = training_args.resume_from_checkpoint
+	print (f'Training initialized from checkpoint {checkpoint}')
 	trainer.train(resume_from_checkpoint=checkpoint)
 
 	if trainer.is_fsdp_enabled:
