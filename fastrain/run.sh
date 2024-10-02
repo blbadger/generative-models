@@ -12,7 +12,7 @@ accelerate launch --config_file "configs/fsdp_config_qlora.yaml" train.py \
 --evaluation_strategy "epoch" \
 --save_strategy "epoch" \
 --bf16 False \
---fp16 True \
+--fp16 False \
 --packing False \
 --learning_rate 2e-5 \
 --lr_scheduler_type "linear" \
