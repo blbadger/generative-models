@@ -30,11 +30,11 @@ class ModelArguments:
 	use_nested_quant: Optional[bool] = field(
 		default=False
 		)
-	bnb_4bit_compute_type: Optional[str] = field(
+	bnb_4bit_compute_dtype: Optional[str] = field(
 		default="float16",
 		metadata={"help": "Compute dtype for 4bit base model"}
 		)
-	bnb_4bit_quant_storage_type: Optional[str] = field(
+	bnb_4bit_quant_storage_dtype: Optional[str] = field(
 		default="uint8"
 		)
 	bnb_4bit_quant_type: Optional[str] = field(
