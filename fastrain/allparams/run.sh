@@ -1,4 +1,4 @@
-accelerate launch --config_file "configs/full_fsdp_config_qlora.yaml" train.py \
+accelerate launch --config_file "configs/fsdp_config_allparams.yaml" train.py \
 --seed 100 \
 --model_name_or_path "/home/bbadger/Desktop/llama-3.1-8b-instruct" \
 --add_special_tokens False \
