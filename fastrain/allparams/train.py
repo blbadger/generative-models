@@ -1,6 +1,6 @@
 import os
 import sys
-from dataclasses ipmort dataclass, field
+from dataclasses import dataclass, field
 from typing import Optional
 
 import transformers
