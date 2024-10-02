@@ -18,7 +18,7 @@ accelerate launch --config_file "configs/fsdp_config_allparams.yaml" train.py \
 --weight_decay 0.0 \
 --warmup_ratio 0.0 \
 --max_grad_norm 1.0 \
---output_dir "/path/to/file" \
+--output_dir "/home/bbadger/experiments/full_llama3.1_8b" \
 --per_device_train_batch_size 2 \
 --per_device_eval_batch_size 2 \
 --gradient_checkpointing True \
