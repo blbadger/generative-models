@@ -82,7 +82,7 @@ class DataTrainingArguments:
 		default="train,test"
 		)
 
-def tile_inputs(input_ids, tile_overlap=20, tile_size=1024):
+def tile_inputs(input_ids, tokenizer, tile_overlap=20, tile_size=1024):
 	text_length = len(input_ids[0])
 	assert text_length >= tile_overlap, "Text must be longer than overlap to tile"
 
@@ -119,7 +119,7 @@ def tokenize_input(text, tokenizer, tile_size=1024, overlap_size=20):
 
 		if len(input_ids[0]) < overlap_size:
 			continue
-		data = tile_inputs(input_ids, tile_size=tile_size, tile_overlap=overlap_size)
+		data = tile_inputs(input_ids, tokenizer, tile_size=tile_size, tile_overlap=overlap_size)
 		all_data += data
 	return all_data
 
