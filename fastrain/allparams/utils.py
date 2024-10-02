@@ -11,7 +11,6 @@ def create_and_prepare_model(args, data_args, training_args):
 	torch_dtype = torch.float32
 	model = AutoModelForCausalLM.from_pretrained(
 			args.model_name_or_path,
-			quantization_config = bnb_config,
 			trust_remote_code=True,
 			attn_implementation="flash_attention_2" if args.use_flash_attn else "eager",
 			torch_dtype=torch_dtype
