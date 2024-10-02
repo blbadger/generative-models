@@ -12,7 +12,7 @@ accelerate launch --config_file "configs/fsdp_config_qlora.yaml" train.py \
 --evaluation_strategy "epoch" \
 --save_strategy "epoch" \
 --bf16 False \
---fp16 False \
+--fp16 True \
 --packing False \
 --learning_rate 2e-5 \
 --lr_scheduler_type "linear" \
@@ -34,5 +34,5 @@ accelerate launch --config_file "configs/fsdp_config_qlora.yaml" train.py \
 --use_4bit_quantization True \
 --use_nested_quant True \
 --bnb_4bit_compute_type "float16" \
---bnb_4bit_quant_storage_type "float32" \
+--bnb_4bit_quant_storage_type "float16" \
 --report_to "none"
