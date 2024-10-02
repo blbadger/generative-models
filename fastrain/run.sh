@@ -1,6 +1,6 @@
 accelerate launch --config_file "configs/fsdp_config_qlora.yaml" train.py \
 --seed 100 \
---model_name_or_path "/home/bbadger/Desktop/llama-3.1-8b-instruct" \
+--model_name_or_path "/home/bbadger/Desktop/llama-3-8b-instruct" \
 --dataset_path "open-phi/textbooks" \
 --add_special_tokens False \
 --append_concat_token False \
@@ -19,7 +19,7 @@ accelerate launch --config_file "configs/fsdp_config_qlora.yaml" train.py \
 --weight_decay 0.0 \
 --warmup_ratio 0.0 \
 --max_grad_norm 1.0 \
---output_dir "/home/bbadger/experiments/llama3.1_8b_test" \
+--output_dir "/home/bbadger/experiments/llama3_8b_test" \
 --per_device_train_batch_size 2 \
 --per_device_eval_batch_size 2 \
 --gradient_checkpointing True \
