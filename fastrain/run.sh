@@ -25,7 +25,7 @@ accelerate launch --config_file "configs/fsdp_config_qlora.yaml" train.py \
 --gradient_checkpointing True \
 --use_reentrant True \
 --dataset_text_field "content" \
---use_flash_attn True \
+--use_flash_attn False \
 --use_peft_lora True \
 --lora_r 32 \
 --lora_alpha 64 \
