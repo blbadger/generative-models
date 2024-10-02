@@ -8,7 +8,7 @@ from peft import LoraConfig
 
 def create_and_prepare_model(args, data_args, training_args):
 	peft_config = None
-	torch_dtype = quant_storage_dtype if quant_storage_dtype and quant_storage_dtype.is_floating_point else torch.float32
+	torch_dtype = torch.float32
 	model = AutoModelForCausalLM.from_pretrained(
 			args.model_name_or_path,
 			quantization_config = bnb_config,
@@ -16,7 +16,7 @@ def create_and_prepare_model(args, data_args, training_args):
 			attn_implementation="flash_attention_2" if args.use_flash_attn else "eager",
 			torch_dtype=torch_dtype
 		)
-	
+
 	# TODO: add special token compatibility
 	special_tokens=None
 	if special_tokens is not None:
