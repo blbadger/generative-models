@@ -106,12 +106,12 @@ def tile_inputs(input_ids, tile_overlap=20, tile_size=1024):
 
 	return tiled_arr
 
-def tokenize_input(text, tokenizer, tile_size=1024, overlap_size=20,):
+def tokenize_input(text, tokenizer, tile_size=1024, overlap_size=20):
 	# assumes dataset is not large (< 1b samples) and can be loaded in memory
 	all_data = []
 	for i, text_file in enumerate(text):
 		input_ids = tokenizer.encode(
-			text_file,
+			text_file["markdown"],
 			add_special_tokens=False,
 			return_tensors="pt",
 			truncation=False
@@ -148,8 +148,8 @@ def main(model_args, data_args, training_args):
 	else:
 		dataset = load_dataset(data_path)
 
-	train_data = tokenize_input(dataset["train"], tokenizer, tile_size=data_args.max_seq_length)[:50]
-	test_data = tokenize_input(dataset["train"], tokenizer, tile_size=data_args.max_seq_length)[:10]
+	train_data = tokenize_input(dataset["train"][:50], tokenizer, tile_size=data_args.max_seq_length)
+	test_data = tokenize_input(dataset["train"][:10], tokenizer, tile_size=data_args.max_seq_length)
 	train_text, test_text = detokenize_input(train_data, tokenizer), detokenize_input(test_data, tokenizer)
 	print ("Training samples: ", len(train_text))
 	print ("Test samples: ", len(test_text))
