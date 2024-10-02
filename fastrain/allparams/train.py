@@ -179,7 +179,6 @@ def main(model_args, data_args, training_args):
 		max_seq_length=data_args.max_seq_length
 	)
 	trainer.accelerator.print(f"{trainer.model}")
-	trainer.model.print_trainable_parameters()
 
 	checkpoint=None
 	if training_args.resume_from_checkpoint:
