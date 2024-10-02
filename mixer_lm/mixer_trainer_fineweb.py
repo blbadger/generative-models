@@ -178,8 +178,8 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=64,
+	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
@@ -202,5 +202,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-trainer.train("/home/bbadger/Desktop/fineweb_mixer_512_n8/checkpoint-44000")
+trainer.train("/home/bbadger/Desktop/fineweb_mixer_512_n8/checkpoint-96000")
 
