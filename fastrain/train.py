@@ -182,8 +182,8 @@ def main(model_args, data_args, training_args):
 	)
 	trainer.accelerator.print(f"{trainer.model}")
 	trainer.model.print_trainable_parameters()
+	trainer.model = trainer.model.to(torch.half)
 	for name, param in trainer.model.named_parameters():
-		param = param.to(torch.half)
 		print ('After trainer: ', name, param.dtype, param.device)
 
 	checkpoint=None
