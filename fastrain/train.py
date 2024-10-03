@@ -162,6 +162,8 @@ def main(model_args, data_args, training_args):
 
 	test_text = {'text': list(test_text)}
 	test_text_dataset = Dataset.from_dict(test_text)
+	for name, param in model.named_parameters():
+		print ('Before trainer: ', name, param.device, param.dtype)
 
 	trainer = SFTTrainer(
 		model=model,
@@ -181,7 +183,8 @@ def main(model_args, data_args, training_args):
 	trainer.accelerator.print(f"{trainer.model}")
 	trainer.model.print_trainable_parameters()
 	for name, param in trainer.model.named_parameters():
-		print (name, param.dtype, param.device)
+		param = param.to(torch.half)
+		print ('After trainer: ', name, param.dtype, param.device)
 
 	checkpoint=None
 	if training_args.resume_from_checkpoint:
