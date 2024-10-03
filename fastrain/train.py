@@ -180,6 +180,8 @@ def main(model_args, data_args, training_args):
 	)
 	trainer.accelerator.print(f"{trainer.model}")
 	trainer.model.print_trainable_parameters()
+	for name, param in trainer.model.named_parameters():
+		print (name, param.dtype, param.device)
 
 	checkpoint=None
 	if training_args.resume_from_checkpoint:
