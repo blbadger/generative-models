@@ -184,8 +184,7 @@ def main(model_args, data_args, training_args):
 	trainer.model.print_trainable_parameters()
 	trainer.model = trainer.model.to(torch.half).to('cuda')
 	for name, param in trainer.model.named_parameters():
-		trainer.model.
-		print ('After trainer: ', name, param.dtype, param.device)
+		trainer.accelerator.print ('After trainer: ', name, param.dtype, param.device)
 
 	checkpoint=None
 	if training_args.resume_from_checkpoint:
