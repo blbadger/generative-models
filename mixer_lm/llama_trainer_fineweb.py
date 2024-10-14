@@ -21,13 +21,13 @@ from safetensors import safe_open
 device = 0 if torch.cuda.is_available else 'cpu'
 
 dim = 512 
-context_length = 512
+context_length = 32
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
     'num_hidden_layers': 8,
     'num_attention_heads': 4,
-    'vocab_size': 8000
+    'vocab_size': 16000
 }
 
 # Initializing a LLaMA model
@@ -81,8 +81,8 @@ def tokenization(example):
 		)
     return tokens
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c32"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c32"
 
 def map_dataset(train_path, test_path, split_index=50000):
 	"""
@@ -93,14 +93,14 @@ def map_dataset(train_path, test_path, split_index=50000):
 
 	train_dataset = train_text.map(tokenization, batched=True)
 	test_dataset = test_text.map(tokenization, batched=True)
-	train_dataset.save_to_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-train")
-	test_dataset.save_to_disk("/home/bbadger/Desktop/fineweb-edu-tokenized-test")
+	train_dataset.save_to_disk(train_path)
+	test_dataset.save_to_disk(test_path)
 	print ('datasets saved to disk')
 	return
 
+#map_dataset(train_path, test_path)
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
-
 
 def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
@@ -159,7 +159,7 @@ if tokenize:
 	'test_data': torch.stack(test_data, dim=0)
 	}
 
-	save_file(data_dict, '/home/bbadger/Desktop/tokenized_fineweb10b_8k.safetensors')
+	save_file(data_dict, '/home/bbadger/Desktop/tokenized_fineweb10b_16k.safetensors')
 	print ('tokens saved')
 load_input = False
 if load_input:
@@ -187,15 +187,15 @@ def reformat_inputs(train_data, test_data):
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=64,
+	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_llama_512_n8_h4',
+	output_dir='~/Desktop/fineweb_llama_512_c32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000

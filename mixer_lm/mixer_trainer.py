@@ -142,10 +142,10 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
-tokenized_length = 64
-dim = 4096
+tokenized_length = 512
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 1) 
+model = LanguageMixer(n_vocab, dim, 8) 
 
 # one = torch.tensor([[[1, 4, 3]]]).to(device)
 # two = torch.tensor([[[1, 2, 3]]]).to(device)
@@ -278,7 +278,7 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-load_safetensors = False
+load_safetensors = True
 if load_safetensors and os.path.exists('/home/bbadger/Desktop/tinystories_tokens.safetensors'):
 	tensors = {}
 	with safe_open("/home/bbadger/Desktop/tinystories_tokens.safetensors", framework="pt", device="cpu") as f:
