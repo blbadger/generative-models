@@ -53,6 +53,6 @@ training_corpus = get_training_corpus(dataset)
 # print (next(training_corpus))
 
 # Train the new tokenizer
-tokenizer = old_tokenizer.train_new_from_iterator(training_corpus, 16000)
-tokenizer.save_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_16k")
+tokenizer = old_tokenizer.train_new_from_iterator(training_corpus, 128000)
+tokenizer.save_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_128k")
 print ("Tokenizer saved")

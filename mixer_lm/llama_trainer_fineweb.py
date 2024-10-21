@@ -21,13 +21,13 @@ from safetensors import safe_open
 device = 0 if torch.cuda.is_available else 'cpu'
 
 dim = 512 
-context_length = 32
+context_length = 512
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
     'num_hidden_layers': 8,
     'num_attention_heads': 4,
-    'vocab_size': 16000
+    'vocab_size': 8000
 }
 
 # Initializing a LLaMA model
@@ -81,8 +81,8 @@ def tokenization(example):
 		)
     return tokens
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c32"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c32"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 
 def map_dataset(train_path, test_path, split_index=50000):
 	"""
@@ -182,20 +182,18 @@ def reformat_inputs(train_data, test_data):
 	return train_data, test_data
 
 
-
-
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=64,
-	per_device_eval_batch_size=64,
+	per_device_train_batch_size=30,
+	per_device_eval_batch_size=30,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_llama_512_c32',
+	output_dir='~/Desktop/fineweb_transfixer_512_n8_c512',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000
