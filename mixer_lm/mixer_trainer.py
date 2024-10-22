@@ -77,18 +77,11 @@ class MixerBlock(nn.Module):
 
 			else:
 				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
-				# # softmax weights
-				# self.conv.weight.data = self.softmax(self.conv.weight.data)
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
 				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
 				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		else:
-			# reshaped_conv = rearrange(self.conv.weight, 'f d p -> (p f) d', p=1)
-			# masked_conv = torch.diagonal_scatter(reshaped_conv, torch.zeros(self.length-1), 1)
-			# self.conv.weight.data = rearrange(masked_conv, '(p f) d -> f d p', p=1).contiguous()
-
-
 			masked_convf = torch.tril(rearrange(self.convf.weight, 'f d p -> p f d'))
 			self.convf.weight.data = rearrange(masked_convf, 'p f d -> f d p').contiguous()
 
@@ -136,22 +129,104 @@ class LanguageMixer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
-# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
+class ReMixerBlock(nn.Module):
+
+	def __init__(self, dim, length, clm_mask=True, expand_conv=False):
+		super().__init__()
+		self.patch_layernorm = nn.LayerNorm(dim)
+		self.seq_layernorm = nn.LayerNorm(dim)
+		self.dim = dim
+		self.length = length
+		self.patch_ff = FeedForward(dim)
+		self.conv = nn.Conv1d(length, length, 1)
+
+	def forward(self, x: torch.tensor):
+		if x.dim() > 3:
+			x = rearrange(x, 'b p t f -> (b p) t f')
+		masked_conv = torch.tril(rearrange(self.conv.weight, 'f d p -> p f d'))
+		self.conv.weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
+		residual = x
+		x = self.seq_layernorm(x)
+		x = self.conv(x) + residual
+		residual = x
+		x = self.patch_layernorm(x)
+		x = self.patch_ff(x) + residual
+		return x
+
+class RecursiveLanguageMixer(nn.Module):
+	def __init__(self, n_vocab, dim, depth, length=512, block_length=32):
+		super().__init__()
+		self.wte = nn.Embedding(n_vocab, dim)
+		self.block_length = block_length
+		blocks = length // block_length
+		self.blocks = blocks
+		self.length = length
+		self.premixerblocks = nn.ModuleList(
+			[ReMixerBlock(
+				dim = dim,
+				length = block_length,
+				)
+			for i in range(depth)]
+			).to(device)
+
+		self.postmixerblocks = nn.ModuleList(
+				[ReMixerBlock(
+				dim = dim,
+				length = block_length + blocks,
+				)
+			for i in range(depth)]
+			).to(device)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+		self.cel = nn.CrossEntropyLoss()
+
+	def forward(self, input_ids, labels=None):
+		x = input_ids
+		x = x.to(device)
+		x = self.wte(x)
+
+		chunks = []
+		for i in range(0, self.length, self.block_length):
+			chunk = x[:, :, i:i+self.block_length, :] # b, p, t, h -> b, t, h in first premixerblock
+			chunks.append(chunk)
+
+		for chunk in chunks:
+			for block in self.premixerblocks:
+				chunk = block(chunk)
+
+		for i, chunk in enumerate(chunks):
+			embedding_placeholder = torch.zeros(x.shape[0], self.blocks, x.shape[-1]).unsqueeze(1).to(device)
+			chunk = torch.cat((embedding_placeholder, chunk), dim=2)
+			chunks[i] = chunk
+
+		for i, chunk in enumerate(chunks):
+			for j in range(0, i):
+				chunk[:, :, j, :] = chunks[j][:, :, -1, :] # last hidden layer in embedding slot
+
+		outputs = []
+		for chunk in chunks:
+			for block in self.postmixerblocks:
+				chunk = block(chunk)
+		x = torch.cat([chunk[:, :, self.blocks:, :] for chunk in chunks], dim=2).squeeze(1)
+
+		output = self.lm_head(x)
+		labels = rearrange(labels, 'b p t -> b (p t)')
+		output = rearrange(output, 'b t e -> b e t')
+		shift_logits = output[..., :-1].contiguous()
+		shift_labels = labels[..., 1:].contiguous()
+		
+		loss = self.cel(shift_logits, shift_labels)
+		return loss, output
+
+
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 1024
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 4).float().to(device)
-
-# one = torch.tensor([[[1, 4, 3]]]).to(device)
-# two = torch.tensor([[[1, 2, 3]]]).to(device)
-# print (model(one, labels=one))
-# print (model(two, labels=two))
-# print (model)
+model = RecursiveLanguageMixer(n_vocab, dim, 4, length=tokenized_length).float().to(device)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -172,7 +247,6 @@ count_parameters(model)
 # cached dataset
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
-
 
 def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	text_length = len(input_ids[0])
@@ -203,7 +277,7 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=200000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -300,15 +374,15 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=100,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_mixer_linear',
+	output_dir='~/Desktop/tinystories_mixer_recursive',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
