@@ -81,8 +81,8 @@ def tokenization(example):
 		)
     return tokens
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test"
 
 def map_dataset(train_path, test_path, split_index=50000):
 	"""
@@ -101,7 +101,6 @@ def map_dataset(train_path, test_path, split_index=50000):
 #map_dataset(train_path, test_path)
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
-
 def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
 	max_length = 512
@@ -184,7 +183,7 @@ def reformat_inputs(train_data, test_data):
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=2,
+	num_train_epochs=3,
 	per_device_train_batch_size=30,
 	per_device_eval_batch_size=30,
 	warmup_steps=500,
@@ -193,10 +192,10 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_transfixer_512_n8_c512',
+	output_dir='~/Desktop/fineweb_transfixer_512',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=200000
+	max_steps=300000
 )
 
 trainer = transformers.Trainer(
@@ -208,5 +207,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-trainer.train() # '/home/bbadger/Desktop/tinystories_llama_256/checkpoint-96000'
+trainer.train() 
 # trainer.train('/home/bbadger/Desktop/tinystories_autollama_512_n8/checkpoint-164000') # '/home/bbadger/Desktop/tinystories_autollama_512_n8/checkpoint-284000'

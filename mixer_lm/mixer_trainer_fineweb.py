@@ -119,6 +119,7 @@ class LanguageMixer(nn.Module):
 			labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
 		shift_logits = output[..., :-1].contiguous()
+		print (labels)
 		shift_labels = labels[..., 1:].contiguous()
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
@@ -146,19 +147,19 @@ tokenized_length = 1024
 dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
-model = LanguageMixer(n_vocab, dim, 16).float().to(device)
-print (model)
-count_parameters(model)
+model = LanguageMixer(n_vocab, dim, 1).float().to(device)
+#print (model)
+#count_parameters(model)
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c1024"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c1024"
 def tokenization(example):
 	tokens = tokenizer.batch_encode_plus(
 		example['text'],
 		add_special_tokens=False,
 		return_tensors='pt',
 		truncation=True,
-		max_length=512
+		max_length=512,
 		padding='max_length',
 		padding_side='left'	
                 )
@@ -178,7 +179,7 @@ def map_dataset(train_path, test_path, split_index=50000):
 	print ('datasets saved to disk')
 	return
 
-map_dataset(train_path, test_path)
+#map_dataset(train_path, test_path)
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 mlflow.end_run()
@@ -210,5 +211,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-#trainer.train()
+trainer.train()
 #trainer.train('/home/bbadger/Desktop/fineweb_mixer_512_n16_c1024/checkpoint-16000')
