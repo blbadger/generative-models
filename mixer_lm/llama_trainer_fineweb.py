@@ -25,7 +25,7 @@ context_length = 512
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
-    'num_hidden_layers': 8,
+    'num_hidden_layers': 16,
     'num_attention_heads': 4,
     'vocab_size': 8000
 }
@@ -184,18 +184,18 @@ def reformat_inputs(train_data, test_data):
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=30,
-	per_device_eval_batch_size=30,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_transfixer_512',
+	output_dir='~/Desktop/fineweb_llama_n16_h4_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	max_steps=300000
+	max_steps=200000
 )
 
 trainer = transformers.Trainer(
