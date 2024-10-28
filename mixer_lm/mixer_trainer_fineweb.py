@@ -109,7 +109,8 @@ class MixerBlock(nn.Module):
 		else:
 			self.conv = nn.Conv1d(length, length, 1, padding='same')
 		self.expand_conv = expand_conv
-		self.softmax = nn.Softmax(dim=0)
+		#heads = 4
+		#self.mixerhead = MixerHead(1024, 512, 512, heads)
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -133,13 +134,50 @@ class MixerBlock(nn.Module):
 			self.conv.weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
 
 		residual = x
-		#x = self.seq_layernorm(x)
+		x = self.seq_layernorm(x)
 		x = self.conv(x) + residual
 		residual = x
-		#x = self.patch_layernorm(x)
+		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
 		return x
 
+
+class MixerHead(nn.Module):
+
+	def __init__(self, dim, length, hidden_dim, n_heads):
+		super().__init__()
+		self.n_heads = n_heads
+		self.proj_head = nn.ModuleList(
+			[nn.Linear(dim, hidden_dim)
+			for i in range(n_heads)]
+			)
+
+		self.convs = nn.ModuleList(
+			[nn.Conv1d(length, length, 1)
+			for i in range(n_heads)]
+			)
+
+		self.out_proj = nn.Linear(dim*n_heads, dim)
+		self.softmax = nn.Softmax(dim=-1)		
+		self.GeLU = nn.GELU()
+
+	def forward(self, x: torch.tensor):
+
+		for i in range(len(self.convs)):
+			masked_conv = self.softmax(torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d')))
+			self.convs[i].weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
+
+		hidden_layer = []
+
+		for head in range(self.n_heads):
+			projection = self.proj_head[i](x)
+			conv_projection = self.convs[i](x)
+			hidden_layer.append(conv_projection)
+
+		# concatenate and project multi-headed output
+		hidden_layer = torch.cat(hidden_layer, dim=2)
+		hidden_layer = self.out_proj(hidden_layer)
+		return hidden_layer
 
 class MLPMixerBlock(nn.Module):
 
@@ -183,6 +221,7 @@ class LanguageMixer(nn.Module):
 				)
 			for i in range(depth)]
 			).to(device)
+		#self.up_proj1, self.up_proj2 = nn.Linear(dim, dim*2), nn.Linear(dim*2, dim*3)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		if tie_weights:
 			 self.wte.weight = self.lm_head.weight
@@ -192,8 +231,7 @@ class LanguageMixer(nn.Module):
 		x = input_ids
 		x = x.to(device)
 		x = self.wte(x)
-		y = torch.clone(x)
-		for block in self.mixerblocks:
+		for i, block in enumerate(self.mixerblocks):
 			x = block(x)
 		output = self.lm_head(x)
 		if labels.dim() > 2:
@@ -223,16 +261,16 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 512
+tokenized_length = 32
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
-model = LanguageMixer(n_vocab, dim, 16).float().to(device)
-#print (model)
-#count_parameters(model)
+model = LanguageMixer(n_vocab, dim, 16).float()
+print (model)
+count_parameters(model)
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c32"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c32"
 def tokenization(example):
 	tokens = tokenizer.batch_encode_plus(
 		example['text'],
@@ -267,15 +305,15 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=512,
+	per_device_eval_batch_size=512,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_mixer_1024_n16_b32',
+	output_dir='~/Desktop/fineweb_mixer_1024_n16_c32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
