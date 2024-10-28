@@ -1,13 +1,11 @@
 import os
 import prettytable
 from prettytable import PrettyTable
-
 import torch
 import einops
 from einops import rearrange
 import transformers
 from transformers import PreTrainedTokenizerFast
-from transformers import TextDataset, Trainer, TrainingArguments
 from transformers import TextDataset, Trainer, TrainingArguments, AutoModelWithLMHead, DataCollatorForLanguageModeling
 import torch.nn as nn
 import mlflow
@@ -18,101 +16,45 @@ from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
 from safetensors import safe_open
 
-class ScheduledFeedForward(nn.Module):
-
-	def __init__(self, total_iterations, dim, inner_dim):
-		super().__init__()
-		self.in_proj = nn.Linear(dim, inner_dim)
-		self.out_proj = nn.Linear(inner_dim, dim)
-		self.Gelu = nn.GELU()
-		self.identity = nn.Identity()
-		self.total_iterations = total_iterations
-		self.iteration = 0
-
-	def forward(self, x):
-		fraction = (1 - self.iteration / self.total_iterations)
-		fraction = max(fraction, 0)
-		x = self.in_proj(x)
-		x = fraction * self.Gelu(x) + (1-fraction * self.identity(x))
-		x = self.out_proj(x)
-		self.iteration += 1		
-		return x
-	
-
-
-def FeedForward(dim, linear, expansion_factor=1):
-	inner_dim = int(dim * expansion_factor)
-	if not linear:
-		return nn.Sequential(
-			nn.Linear(dim, inner_dim),
-			nn.GELU(),
-			nn.Linear(inner_dim, dim)
-			)
-	else:
-		return nn.Sequential(
-			nn.Linear(dim, inner_dim),
-			nn.Linear(inner_dim, dim)
-			)
-
-def ConvForward(dim, expansion_factor=1):
+def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
-		nn.Conv1d(dim, inner_dim, 1, groups=3),
+		nn.Linear(dim, inner_dim),
 		nn.GELU(),
-		nn.Conv1d(inner_dim, dim, 1, groups=3)
+		nn.Linear(inner_dim, dim)
 		)
 
 
-class MixerBlock(nn.Module):
+class ConcatBlock(nn.Module):
 
-	def __init__(self, dim, length, clm_mask=True, expand_conv=False, linear=False):
+	def __init__(self, dim, length):
 		super().__init__()
 		self.dim = dim
 		self.length = length
-		self.conv = nn.Conv1d(length, length, 1)
-		self.clm_mask = clm_mask
-		self.conv = ConvForward(length)
-		self.expand_conv = expand_conv
+		self.ff = FeedForward(dim, expansion_factor=4)
+		self.token_size = self.dim // self.length # expects self.length to divide self.dim
+		self.token_proj = nn.Linear(dim, self.token_size)
+		self.mask = torch.ones(1, length, dim).to(device)
+		for i in range(self.mask.shape[1]):
+			self.mask[:, i, (i+1)*self.token_size:] = 0
 
 	def forward(self, x: torch.tensor):
-		if x.dim() > 3:
-			x = rearrange(x, 'b p t f -> (b p) t f')
-
-		# for CLM training, apply lower triangular mask to convolution weights
-		if self.clm_mask:
-			if not self.expand_conv:
-				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
-				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-			else:
-				rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
-				self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
-				rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
-				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
-				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
-
-		residual = x
-		x = self.conv(x) + residual
+		proj_x = self.token_proj(x)
+		concat_x = rearrange(proj_x, 'b t h -> b (t h)').repeat(1, self.length)
+		masked_x = rearrange(concat_x, 'b (t h) -> b t h', t=self.length) * self.mask
+		x = self.ff(masked_x)
 		return x
 
-
-class LanguageMixer(nn.Module):
+class Concater(nn.Module):
 
 	def __init__(self, n_vocab, dim, depth, tie_weights=False):
 		super().__init__()
+		assert dim % tokenized_length == 0, 'Dim must be divisible by length'
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.mixerblocks = nn.ModuleList(
-			[MixerBlock(
+			[ConcatBlock(
 				dim = dim,
-				length = tokenized_length,
-				clm_mask=True,
-				expand_conv=True,
-				linear=True,
+				length = tokenized_length
 				)
 			for i in range(depth)]
 			).to(device)
@@ -125,8 +67,12 @@ class LanguageMixer(nn.Module):
 		x = input_ids
 		x = x.to(device)
 		x = self.wte(x)
+		if x.dim() > 3:
+			x = rearrange(x, 'b p t f -> (b p) t f')
+
 		for block in self.mixerblocks:
 			x = block(x)
+
 		output = self.lm_head(x)
 		if labels.dim() > 2:
 			labels = rearrange(labels, 'b p t -> b (p t)')
@@ -136,22 +82,20 @@ class LanguageMixer(nn.Module):
 		loss = self.cel(shift_logits, shift_labels)
 		return loss, output
 
-# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_16k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
-print (tokenizer.is_fast)
 
-tokenized_length = 512
-dim = 1024
+tokenized_length = 3
+dim = 384
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8) 
+model = Concater(n_vocab, dim, 2`).to(device)
 
-# one = torch.tensor([[[1, 4, 3]]]).to(device)
-# two = torch.tensor([[[1, 2, 3]]]).to(device)
-# print (model(one, labels=one))
-# print (model(two, labels=two))
-# print (model)
+one = torch.tensor([[[1, 2, 3]]]).to(device)
+two = torch.tensor([[[1, 5, 3]]]).to(device)
+print (model(one, labels=one))
+print (model(two, labels=two))
+print (model)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -202,9 +146,9 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000, batch_size=1024):
 	train_data, test_data = [], []
-	max_length = 64
+	max_length = 32
 
 	for i in range(0, length, batch_size):
 		
@@ -278,7 +222,7 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-load_safetensors = True
+load_safetensors = False
 if load_safetensors and os.path.exists('/home/bbadger/Desktop/tinystories_tokens.safetensors'):
 	tensors = {}
 	with safe_open("/home/bbadger/Desktop/tinystories_tokens.safetensors", framework="pt", device="cpu") as f:
@@ -317,7 +261,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/mixer_4096_t16k_expandconv',
+	output_dir='~/Desktop/concater_1024_',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
