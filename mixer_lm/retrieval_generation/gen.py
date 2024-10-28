@@ -14,7 +14,7 @@ parser.add_argument('--output_path', type=str)
 if __name__ == '__main__':
 	args = parser.parse_args()
 	model = Llama(
-		model_path = '/home/bbadger/Desktop/models/llama-3-8b-instruct-Q8_0.gguf',
+		model_path = '/home/bbadger/Desktop/llama-3-8b-instruct-Q8_0.gguf',
 		n_gpu_layers = -1,
 		chat_format='llama-3',
 		verbose=False,
