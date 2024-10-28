@@ -3,6 +3,7 @@ import json
 from datasets import load_dataset, load_from_disk
 from tqdm import tqdm
 from transformers import AutoTokenizer
+import argparse
 
 # Instantiate the parser
 parser = argparse.ArgumentParser(description='Driver args')
