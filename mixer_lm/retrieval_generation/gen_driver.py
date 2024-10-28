@@ -18,10 +18,9 @@ if __name__ == "__main__":
 	output_path = args.output_path
 	bash_string = ""
 	assert n_samples % n_gpus == 0, 'Number of samples must be divisible by number of GPUs used'
-	
+
 	for gpu_index in range(n_gpus):
-		selected = int(last_index // n_gpus)
-		remainder = n_samples % n_gpus 
+		selected = int(n_samples// n_gpus)
 		start = gpu_index*selected
 		stop = gpu_index*selected + selected
 		bash_string += template.format(gpu_index, start, stop, output_path)
