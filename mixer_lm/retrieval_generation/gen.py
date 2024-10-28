@@ -40,6 +40,6 @@ if __name__ == '__main__':
 		)
 		outputs.append(output)
 
-	output_path = args.output_path + f'_{start}_{stop}.json'
+	output_path = args.output_path + f'_{args.start}_{args.stop}.json'
 	with open(args.output_path, 'w') as f:
 	    json.dump(outputs, f)

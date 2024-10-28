@@ -15,7 +15,6 @@ model = Llama(
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
 
-
 batch_size = 16
 outputs = []
 for j in tqdm(range(300000, 350000)):
