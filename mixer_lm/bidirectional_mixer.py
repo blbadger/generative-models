@@ -92,7 +92,7 @@ class LanguageMixer(nn.Module):
 		x = self.wte(x)
 		y = torch.clone(x)
 		for block in self.mixerblocks:
-			x = block(x, y)
+			x, y = block(x, y)
 		output = self.lm_head(x + y)
 		if labels.dim() > 2:
 			labels = rearrange(labels, 'b p t -> b (p t)')
