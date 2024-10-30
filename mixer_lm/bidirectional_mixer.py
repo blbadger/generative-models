@@ -69,6 +69,7 @@ class DoubleMixerBlock(nn.Module):
 		x, y = self.patch_ff(x) + residualf, self.patch_ff(y) + residualr
 		return x, y
 
+
 class LanguageMixer(nn.Module):
 
 	def __init__(self, n_vocab, dim, depth):
