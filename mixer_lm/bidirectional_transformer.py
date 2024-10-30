@@ -72,10 +72,9 @@ class AbbreviatedModel(nn.Module):
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
-print (tokenizer.is_fast)
 
 tokenized_length = 512
-dim = 128
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 			
 llama_config_kwargs = {
@@ -108,58 +107,39 @@ def count_parameters(model):
 	print(f"Total Trainable Params: {total_params}")
 	return total_params
 
-count_parameters(model)
+er(n_vocab, dim, 8).float().to(device)
 
-# cached dataset
-train_text = load_dataset("roneneldan/TinyStories", split="train")
-valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test"
+def tokenization(example):
+	tokens = tokenizer.batch_encode_plus(
+		example['text'],
+		add_special_tokens=False,
+		return_tensors='pt',
+		truncation=True,
+		max_length=512,
+		padding='max_length',
+		padding_side='left'	
+        )
+	return tokens
 
-def batch_tokenize_input(train_text, test_text, length=20000, batch_size=4096):
-	train_data, test_data = [], []
-	max_length = 512
+def map_dataset(train_path, test_path, split_index=50000):
+	"""
+	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
+	"""
+	train_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).skip(split_index)
+	test_text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False).take(split_index)
 
-	for i in range(0, length, batch_size):
-		tokens = tokenizer.batch_encode_plus(
-			train_text[i:i+batch_size]['text'],
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=True,
-			max_length=max_length,
-			padding='max_length'
-		)
-		# debatch train data
-		for i in range(tokens.input_ids.shape[0]):
-			train_data.append({'input_ids': tokens.input_ids[i, :], 'attention_mask': tokens.attention_mask[i, :]})
+	train_dataset = train_text.map(tokenization, batched=True)
+	test_dataset = test_text.map(tokenization, batched=True)
+	train_dataset.save_to_disk(train_path)
+	test_dataset.save_to_disk(test_path)
+	print ('datasets saved to disk')
+	return
 
-	for i in range(0, len(test_text), batch_size):
-		tokens = tokenizer.batch_encode_plus(
-			test_text[i:i+batch_size]['text'],
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=True,
-			max_length=max_length,
-			padding='max_length'
-		)
-		# debatch test data
-		for i in range(tokens.input_ids.shape[0]):
-			test_data.append({'input_ids': tokens.input_ids[i, :], 'attention_mask': tokens.attention_mask[i, :]})
-	return train_data, test_data
-
-train_data, test_data = batch_tokenize_input(train_text, valid_text)
-
-def reformat_inputs(train_data, test_data):
-	# reformat inputs for transformer modelz`
-	for i, _ in enumerate(train_data):
-		train_data[i] = train_data[i].flatten()
-
-	for i, _ in enumerate(test_data):
-		test_data[i] = test_data[i].flatten()
-	return train_data, test_data
-
-
-if isinstance(model, LlamaForCausalLM):
-	reformat_inputs(train_data, test_data)
-
+#map_dataset(train_path, test_path)
+train_dataset = load_from_disk(train_path)
+test_dataset = load_from_disk(test_path)
 mlflow.end_run()
 print ('training begun')
 
@@ -173,7 +153,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_autoencoding_transformer_n8_b32',
+	output_dir='~/Desktop/fineweb_bitransformer_512_n8_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
