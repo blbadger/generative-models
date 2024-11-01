@@ -121,9 +121,9 @@ n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
 tokenized_length = 512
-dim = 1024
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+model = LanguageMixer(n_vocab, dim, 24).float().to(device)
 
 train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train"
 test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test"
@@ -169,7 +169,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_bimixer_1024_n8_b32',
+	output_dir='~/Desktop/fineweb_bimixer_1024_n16_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,

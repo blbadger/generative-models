@@ -44,7 +44,7 @@ tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_finew
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
-print (model)
+#print (model)
 
 # Causal mask check
 # model = model.to(device)
@@ -76,8 +76,9 @@ def tokenization(example):
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=True,
-			max_length=512,
+			max_length=1024,
 			padding='max_length',
+			padding_side='right'
 		)
     return tokens
 
@@ -98,7 +99,7 @@ def map_dataset(train_path, test_path, split_index=50000):
 	print ('datasets saved to disk')
 	return
 
-#map_dataset(train_path, test_path)
+map_dataset(train_path, test_path)
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 def tokenize_input(train_text, test_text):
@@ -207,5 +208,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-trainer.train() 
+#trainer.train('/home/bbadger/Desktop/fineweb_llama_512_n16_h4_b32/checkpoint-60000') 
 # trainer.train('/home/bbadger/Desktop/tinystories_autollama_512_n8/checkpoint-164000') # '/home/bbadger/Desktop/tinystories_autollama_512_n8/checkpoint-284000'

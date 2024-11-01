@@ -1,7 +1,5 @@
-import os
 import prettytable
 from prettytable import PrettyTable
-
 import torch
 import einops
 from einops import rearrange
@@ -11,10 +9,14 @@ from transformers import TextDataset, Trainer, TrainingArguments, AutoModelWithL
 import torch.nn as nn
 import mlflow
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
+from safetensors import safe_open
+from safetensors.torch import save_file
+from mixer_multiconv import MultiHeadedMixer
+
 
 class BidirectionalTransformer(nn.Module):
 
@@ -55,12 +57,12 @@ class AbbreviatedModel(nn.Module):
 		super().__init__()
 		self.model = model
 		self.depth = depth
-		self.position_ids = torch.tensor([[i for i in range(tokenized_length)]]).to(device)
+		self.position_ids = torch.tensor([[i for i in range(tokenized_length)]])
 
 	def forward(self, input_ids: torch.Tensor, **attention_mask: torch.Tensor):
 		# Matrix mult instead of embedding to prevent type incompatibility
 		x = input_ids
-		position_ids = self.position_ids.repeat(input_ids.shape[0], 1)
+		position_ids = self.position_ids.repeat(input_ids.shape[0], 1).to(device)
 		# if not attention_mask is None:
 		# 	attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).half()
 
@@ -69,7 +71,7 @@ class AbbreviatedModel(nn.Module):
 		return x
 
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
@@ -91,7 +93,7 @@ configuration = LlamaConfig(**llama_config_kwargs)
 # Initializing a model from the llama-7b style configuration
 forward_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
 reverse_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-model = BidirectionalTransformer(n_vocab, dim, forward_model, reverse_model)
+model = BidirectionalTransformer(n_vocab, dim, forward_model, reverse_model).to(device)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -107,7 +109,7 @@ def count_parameters(model):
 	print(f"Total Trainable Params: {total_params}")
 	return total_params
 
-er(n_vocab, dim, 8).float().to(device)
+
 
 train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train"
 test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test"
@@ -161,8 +163,8 @@ training_arguments = transformers.TrainingArguments(
 
 trainer = transformers.Trainer(
 	model=model,
-	train_dataset=train_data,
-	eval_dataset=test_data,
+	train_dataset=train_dataset,
+	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
