@@ -7,6 +7,9 @@ from datasets import load_dataset, load_from_disk
 import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+tokenizer.pad_token = tokenizer.eos_token
+
 def tokenization(example, n_ctx=32):
     tokens = tokenizer.batch_encode_plus(
 			example['text'],
