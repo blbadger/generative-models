@@ -262,15 +262,15 @@ n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
 tokenized_length = 32
-dim = 1024
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
-model = LanguageMixer(n_vocab, dim, 16).float()
+model = LanguageMixer(n_vocab, dim, 32).float()
 print (model)
 count_parameters(model)
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c32"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c32"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c32-packed"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c32-packed"
 def tokenization(example):
 	tokens = tokenizer.batch_encode_plus(
 		example['text'],
@@ -313,7 +313,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_mixer_1024_n16_c32',
+	output_dir='~/Desktop/fineweb_mixer_512_n32_c32_packed',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
