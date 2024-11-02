@@ -41,14 +41,22 @@ def map_dataset(train_path, test_path, split_index=50000):
 	print ('Datasets saved to disk')
 	return
 
+
+def debatch(example):
+	batch_size = len(example['input_ids'])
+	for key in example.keys():
+		if key != 'input_ids':
+			del example[key]
+	debatched_inuts = ['input_ids': tokens for rokens in batch["input_ids"]]
+	return dataset.from_list(debatched_inputs)
+
 #map_dataset(train_path, test_path)
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
-test_dataset.map(lambda batch: {"input_ids":b for b in batch["input_ids"][0]}, batched=False)
+test_dataset.map(debatch, batched=False)
 print (test_dataset[0])
-print (test_dataset[1])
 test_dataset.save_to_disk(test_path+'-debatched')
-train_dataset.map(lambda batch: {"input_ids":b for b in batch["input_ids"]}, batched=False)
+train_dataset.map(debatch, batched=False)
 print (train_dataset[0])
 train_dataset.save_to_disk(train_path+'-debatched')
 
