@@ -17,11 +17,12 @@ import prettytable
 from prettytable import PrettyTable
 from safetensors.torch import save_file
 from safetensors import safe_open
+import datasets
 
 device = 0 if torch.cuda.is_available else 'cpu'
 
 dim = 512 
-context_length = 512
+context_length = 32
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
@@ -82,8 +83,8 @@ def tokenization(example):
 		)
     return tokens
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c32-packed-debatched"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c32-packed-debatched"
 
 def map_dataset(train_path, test_path, split_index=50000):
 	"""
@@ -99,7 +100,8 @@ def map_dataset(train_path, test_path, split_index=50000):
 	print ('datasets saved to disk')
 	return
 
-map_dataset(train_path, test_path)
+#map_dataset(train_path, test_path)
+datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
 def tokenize_input(train_text, test_text):
@@ -185,15 +187,15 @@ def reformat_inputs(train_data, test_data):
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=512,
+	per_device_eval_batch_size=512,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_llama_n16_h4_b32',
+	output_dir='~/Desktop/fineweb_llama_n16_h4_c32_b512_packed',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000
@@ -208,5 +210,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-#trainer.train('/home/bbadger/Desktop/fineweb_llama_512_n16_h4_b32/checkpoint-60000') 
-# trainer.train('/home/bbadger/Desktop/tinystories_autollama_512_n8/checkpoint-164000') # '/home/bbadger/Desktop/tinystories_autollama_512_n8/checkpoint-284000'
+#trainer.train() 
+trainer.train('/home/bbadger/Desktop/fineweb_llama_n16_h4_c32_b512_packed/checkpoint-92000')

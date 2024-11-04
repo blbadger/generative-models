@@ -3,8 +3,9 @@ import torch
 from transformers import PreTrainedTokenizerFast
 from transformers import AutoTokenizer
 import torch.nn as nn
-from datasets import load_dataset, load_from_disk
+from datasets import load_dataset, load_from_disk, Dataset
 import sentencepiece
+import pyarrow as pa
 
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -44,19 +45,21 @@ def map_dataset(train_path, test_path, split_index=50000):
 
 def debatch(example):
 	batch_size = len(example['input_ids'])
-	for key in example.keys():
+	keys = list(example.keys())
+	for key in keys:
 		if key != 'input_ids':
-			del example[key]
-	debatched_inuts = ['input_ids': tokens for rokens in batch["input_ids"]]
-	return dataset.from_list(debatched_inputs)
+			example.pop(key, None)
+	debatched_inputs = [{'input_ids': tokens} for tokens in example["input_ids"][0]]
+	return pa.Table.from_pylist(debatched_inputs)
 
 #map_dataset(train_path, test_path)
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
-test_dataset.map(debatch, batched=False)
+print (test_dataset[0]['input_ids'])
+test_dataset = test_dataset.map(debatch, batched=True, batch_size=1)
 print (test_dataset[0])
 test_dataset.save_to_disk(test_path+'-debatched')
-train_dataset.map(debatch, batched=False)
+train_dataset = train_dataset.map(debatch, batched=True, batch_size=1)
 print (train_dataset[0])
 train_dataset.save_to_disk(train_path+'-debatched')
 
