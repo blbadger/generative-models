@@ -21,30 +21,5 @@ if __name__ == '__main__':
 	print ('post clean', dataset[0])
 	dataset.save_to_disk(path + 'temp')
 	shutil.rmtree(path)
-	os.rename(path + 'temp', path)  
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	os.rename(path + 'temp', path)
 
