@@ -61,7 +61,7 @@ class AutoencodingMixer(nn.Module):
 	def __init__(self, n_vocab, dim, depth, length):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
-		self.length = length
+		self.split_i = length//2
 		self.encoderblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,
@@ -84,21 +84,18 @@ class AutoencodingMixer(nn.Module):
 	def forward(self, input_ids, labels=None):
 		x = input_ids
 		x = x.to(device)
-		inputs = input_ids[:, :self.length, :]
 		x = self.wte(x)
 		for block in self.encoderblocks:
 			x = block(x)
 
-		encoder_embedding = x[:, -1, :].unsqueeze(1) # dim=[batch, token, hidden]
-		encoder_embedding = encoder_embedding.repeat(1, self.tokenized_length, 1)
-		x = encoder_embedding
+		x[:, :self.split_i, :] = 0 # mask 
 
 		for block in self.decoderblocks:
 			x = block(x)
 		
 		output = self.lm_head(x)
-		labels = rearrange(labels, 'b p t -> b (p t)')[:, self.length:]
-		output = rearrange(output, 'b t e -> b e t')
+		labels = rearrange(labels, 'b p t -> b (p t)')[:, self.split_i:]
+		output = rearrange(output, 'b t e -> b e t')[:, :, self.split_i:]
 		loss = self.cel(output, labels)
 		return loss, output
 
@@ -107,7 +104,7 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 256 # length should be token_length/2 as first half predicts second
+tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = AutoencodingMixer(n_vocab, dim, 8)
