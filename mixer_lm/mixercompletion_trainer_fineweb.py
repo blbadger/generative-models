@@ -102,7 +102,6 @@ class AutoencodingMixer(nn.Module):
 		loss = self.cel(output, labels)
 		return loss, output
 
-# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
@@ -117,8 +116,8 @@ train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
 test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 
 datasets.config.IN_MEMORY_MAX_SIZE = 30e9
-train_dataset = load_from_disk(train_path, keep_in_memory=None)
-test_dataset = load_from_disk(test_path, keep_in_memory=None)
+train_dataset = load_from_disk(train_path)
+test_dataset = load_from_disk(test_path)
 
 mlflow.end_run()
 print ('Training Begun')

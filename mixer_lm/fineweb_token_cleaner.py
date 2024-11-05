@@ -18,30 +18,6 @@ if __name__ == '__main__':
 	print ('pre clean', dataset[0])
 	dataset = dataset.map(clean, batched=True)
 	print ('post clean', dataset[0])
-	# test_dataset.save_to_disk(test_path)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	test_dataset.save_to_disk(test_path+'cleaned')
 
 
