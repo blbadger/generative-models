@@ -95,7 +95,9 @@ class AutoencodingMixer(nn.Module):
 			x = block(x)
 		
 		output = self.lm_head(x)
-		labels = rearrange(labels, 'b p t -> b (p t)')[:, self.split_i:]
+		if labels.dim() > 2:
+			labels = rearrange(labels, 'b p t -> b (p t)')
+		labels = labels[:, self.split_i:]
 		output = rearrange(output, 'b t e -> b e t')[:, :, self.split_i:]
 		loss = self.cel(output, labels)
 		return loss, output
