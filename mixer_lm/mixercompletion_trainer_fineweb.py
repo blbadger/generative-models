@@ -89,7 +89,7 @@ class AutoencodingMixer(nn.Module):
 		for block in self.encoderblocks:
 			x = block(x)
 
-		x[:, :self.split_i, :] = 0 # mask 
+		x[:, self.split_i:, :] = 0 # mask 
 
 		for block in self.decoderblocks:
 			x = block(x)
