@@ -82,7 +82,7 @@ class AutoencodingMixer(nn.Module):
 		self.cel = nn.CrossEntropyLoss()
 		self.tokenized_length = tokenized_length
 
-	def forward(self, input_ids, labels=None):
+	def forward(self, input_ids, labels=None, **kwargs):
 		x = input_ids
 		x = x.to(device)
 		x = self.wte(x)
