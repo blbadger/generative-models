@@ -107,7 +107,7 @@ print ('Vocab size: ', n_vocab)
 tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = AutoencodingMixer(n_vocab, dim, 8)
+model = AutoencodingMixer(n_vocab, dim, 8, tokenized_length)
 
 train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
 test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
