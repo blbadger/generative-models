@@ -138,8 +138,8 @@ training_arguments = transformers.TrainingArguments(
 
 trainer = transformers.Trainer(
 	model=model,
-	train_dataset=train_data,
-	eval_dataset=test_data,
+	train_dataset=train_dataset,
+	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
