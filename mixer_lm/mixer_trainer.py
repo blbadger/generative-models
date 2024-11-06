@@ -40,7 +40,7 @@ class ScheduledFeedForward(nn.Module):
 	
 
 
-def FeedForward(dim, linear, expansion_factor=1):
+def LinearFeedForward(dim, linear, expansion_factor=1):
 	inner_dim = int(dim * expansion_factor)
 	if not linear:
 		return nn.Sequential(
@@ -54,18 +54,25 @@ def FeedForward(dim, linear, expansion_factor=1):
 			nn.Linear(inner_dim, dim)
 			)
 
-def ConvForward(dim, expansion_factor=1):
+def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
-		nn.Conv1d(dim, inner_dim, 1, groups=3),
+		nn.Linear(dim, inner_dim),
 		nn.GELU(),
-		nn.Conv1d(inner_dim, dim, 1, groups=3)
+		nn.Linear(inner_dim, dim)
+	)
+
+def LinearConvForward(dim, expansion_factor=1):
+	inner_dim = int(dim * expansion_factor)
+	return nn.Sequential(
+		nn.Conv1d(dim, inner_dim, 1),
+		nn.GELU(),
+		nn.Conv1d(inner_dim, dim, 1)
 		)
 
+class LinearMixerBlock(nn.Module):
 
-class MixerBlock(nn.Module):
-
-	def __init__(self, dim, length, clm_mask=True, expand_conv=False, linear=False):
+	def __init__(self, dim, length, clm_mask=True, expand_conv=False, linear=True):
 		super().__init__()
 		self.dim = dim
 		self.length = length
@@ -100,6 +107,52 @@ class MixerBlock(nn.Module):
 		x = self.conv(x) + residual
 		return x
 
+class MixerBlock(nn.Module):
+
+	def __init__(self, dim, length=512, expand_conv=False):
+		super().__init__()
+		self.patch_layernorm = nn.LayerNorm(dim)
+		self.seq_layernorm = nn.LayerNorm(dim)
+		self.dim = dim
+		self.length = length
+		self.patch_ff = FeedForward(dim)
+		if expand_conv:
+			self.conv = ConvForward(length)
+		else:
+			self.conv = nn.Conv1d(length, length, 1, padding='same')
+		self.expand_conv = expand_conv
+		#heads = 4
+		#self.mixerhead = MixerHead(1024, 512, 512, heads)
+
+	def forward(self, x: torch.tensor):
+		if x.dim() > 3:
+			x = rearrange(x, 'b p t f -> (b p) t f')
+
+		# for CLM training, apply lower triangular mask to convolution weights
+		if self.expand_conv:
+			rearranged_shape = rearrange(self.conv[0].weight, 'f d p -> f (d p)').shape
+			mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+			applied_mask = rearrange(self.conv[0].weight, 'f d p -> f (d p)') * mask
+			self.conv[0].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
+			rearranged_shape = rearrange(self.conv[2].weight, 'f d p -> f (d p)').shape
+			mask = torch.tril(torch.ones(rearranged_shape)).to(device)
+
+			applied_mask = rearrange(self.conv[2].weight, 'f d p -> f (d p)') * mask
+			self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+
+		else:
+			masked_conv = torch.tril(rearrange(self.conv.weight, 'f d p -> p f d'))
+			self.conv.weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
+
+		residual = x
+		x = self.seq_layernorm(x)
+		x = self.conv(x) + residual
+		residual = x
+		x = self.patch_layernorm(x)
+		x = self.patch_ff(x) + residual
+		return x
+
 
 class LanguageMixer(nn.Module):
 
@@ -110,9 +163,7 @@ class LanguageMixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = tokenized_length,
-				clm_mask=True,
-				expand_conv=True,
-				linear=True,
+				expand_conv=False
 				)
 			for i in range(depth)]
 			).to(device)
@@ -137,7 +188,7 @@ class LanguageMixer(nn.Module):
 		return loss, output
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_16k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
@@ -204,7 +255,7 @@ def debatch_input(input_data):
 
 def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
 	train_data, test_data = [], []
-	max_length = 64
+	max_length = 512
 
 	for i in range(0, length, batch_size):
 		
@@ -214,7 +265,7 @@ def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024)
 			return_tensors='pt',
 			truncation=True,
 			max_length=max_length,
-			padding='max_length'
+			padding='max_length',
 		).input_ids
 		train_data.append(input_ids)
 
@@ -225,7 +276,8 @@ def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024)
 			return_tensors='pt',
 			truncation=True,
 			max_length=max_length,
-			padding='max_length'
+			padding='max_length',
+			padding_side='right'
 		).input_ids
 		test_data.append(input_ids)
 
@@ -245,7 +297,6 @@ def tokenize_input(train_text, test_text):
 			return_tensors='pt',
 			truncation=False,
 			max_length=max_length,
-			padding='max_length'
 		)
 
 		if len(input_ids[0]) > max_length:
@@ -278,7 +329,7 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-load_safetensors = True
+load_safetensors = False
 if load_safetensors and os.path.exists('/home/bbadger/Desktop/tinystories_tokens.safetensors'):
 	tensors = {}
 	with safe_open("/home/bbadger/Desktop/tinystories_tokens.safetensors", framework="pt", device="cpu") as f:
@@ -308,16 +359,16 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=9,
-	per_device_train_batch_size=64,
-	per_device_eval_batch_size=64,
+	num_train_epochs=4,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=1e-4,
+	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/mixer_4096_t16k_expandconv',
+	output_dir='~/Desktop/Tinystories_mixer_1024_n8_b32_paddingright',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

@@ -20,14 +20,14 @@ import datasets
 
 class AutoencodingTransformer(nn.Module):
 
-	def __init__(self, n_vocab, dim, encoder_model, decoder_model):
+	def __init__(self, n_vocab, dim, length, encoder_model, decoder_model):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.encoder = encoder_model
 		self.decoder = decoder_model
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		self.cel = nn.CrossEntropyLoss()
-		self.tokenized_length = tokenized_length
+		self.tokenized_length = length
 		self.split_i = length//2 
 
 	def forward(self, input_ids, labels=None, attention_mask=None):
@@ -62,7 +62,7 @@ class AbbreviatedModel(nn.Module):
 	def forward(self, input_ids: torch.Tensor, **attention_mask: torch.Tensor):
 		# Matrix mult instead of embedding to prevent type incompatibility
 		x = input_ids
-		position_ids = self.position_ids.repeat(input_ids.shape[0], 1)
+		position_ids = self.position_ids.repeat(input_ids.shape[0], 1).to(device)
 		# if not attention_mask is None:
 		# 	attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).half()
 
@@ -70,15 +70,15 @@ class AbbreviatedModel(nn.Module):
 			x = self.model.model.layers[i](x, position_ids=position_ids)[0]
 		return x
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenized_length = 512
+dim = 512
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
-print (tokenizer.is_fast)
-
-tokenized_length = 512
-dim = 128
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-			
+print ('Vocab size: ', n_vocab)
+		
 llama_config_kwargs = {
 	'hidden_size': dim,
 	'intermediate_size': 4*dim,
@@ -93,18 +93,7 @@ configuration = LlamaConfig(**llama_config_kwargs)
 # Initializing a model from the llama-7b style configuration
 encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
 decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-model = AutoencodingTransformer(n_vocab, dim, encoder_model, decoder_model)
-
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
-tokenizer.pad_token = tokenizer.eos_token
-n_vocab = len(tokenizer)
-print ('Vocab size: ', n_vocab)
-
-tokenized_length = 512
-dim = 1024
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = AutoencodingMixer(n_vocab, dim, 8, tokenized_length)
-
+model = AutoencodingTransformer(n_vocab, dim, tokenized_length, encoder_model, decoder_model)
 train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
 test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 
@@ -116,7 +105,7 @@ mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=7,
+	num_train_epochs=3,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
@@ -125,16 +114,17 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_autoencoding_transformer_n8_b32',
+	output_dir='~/Desktop/fineweb_llamacompletion_512_n8_c512',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	save_safetensors=True
+	save_safetensors=True,
+	max_steps=200000
 )
 
 trainer = transformers.Trainer(
 	model=model,
-	train_dataset=train_data,
-	eval_dataset=test_data,
+	train_dataset=train_dataset,
+	eval_dataset=test_dataset,
 	args=training_arguments,
 	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 )
