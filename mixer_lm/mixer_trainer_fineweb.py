@@ -262,25 +262,25 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 32
+tokenized_length = 128
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
 model = LanguageMixer(n_vocab, dim, 16).float()
-print (model)
-count_parameters(model)
+#print (model)
+#count_parameters(model)
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c32-packed-debatched"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c32-packed-debatched"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c128-packed-debatched"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c128-packed-debatched"
 def tokenization(example):
 	tokens = tokenizer.batch_encode_plus(
 		example['text'],
 		add_special_tokens=False,
 		return_tensors='pt',
 		truncation=True,
-		max_length=512,
+		max_length=128,
 		padding='max_length',
-		padding_side='left'	
+		padding_side='right'	
         )
 	return tokens
 
@@ -302,20 +302,21 @@ def map_dataset(train_path, test_path, split_index=50000):
 datasets.config.IN_MEMORY_MAX_SIZE = 30e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
+print (len(train_dataset), train_dataset[0])
 mlflow.end_run()
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=512,
-	per_device_eval_batch_size=512,
+	per_device_train_batch_size=128,
+	per_device_eval_batch_size=128,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_mixer_1024_n16_c32_packed',
+	output_dir='~/Desktop/fineweb_mixer_1024_n16_c128_packed',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
@@ -331,5 +332,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
+trainer.train('/home/bbadger/Desktop/fineweb_mixer_1024_n16_c128_packed/checkpoint-140000')
 #trainer.train()
-trainer.train('/home/bbadger/Desktop/fineweb_mixer_1024_n16_c32_packed/checkpoint-116000')

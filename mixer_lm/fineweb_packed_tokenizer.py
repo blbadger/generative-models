@@ -10,7 +10,7 @@ import pyarrow as pa
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
-def tokenization(example, n_ctx=32):
+def tokenization(example, n_ctx=128):
     tokens = tokenizer.encode_plus(
 			example['text'],
 			add_special_tokens=False,
@@ -25,8 +25,8 @@ def tokenization(example, n_ctx=32):
     tokens = tokens[:length].reshape(batch_size, n_ctx)
     return {'input_ids': tokens}
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c32-packed"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c32-packed"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c128-packed"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c128-packed"
 
 def map_dataset(train_path, test_path, split_index=50000):
 	"""
@@ -50,11 +50,14 @@ def debatch(example):
 		if key != 'input_ids':
 			example.pop(key, None)
 	debatched_inputs = [{'input_ids': tokens} for tokens in example["input_ids"][0]]
+	if not debatched_inputs: return [{'input_ids': torch}]
 	return pa.Table.from_pylist(debatched_inputs)
 
 #map_dataset(train_path, test_path)
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
+train_dataset = train_dataset.filter(lambda x: len(x['input_ids']) > 0)
+test_dataset = test_dataset.filter(lambda x: len(x['input_ids']) > 0)
 print (test_dataset[0]['input_ids'])
 test_dataset = test_dataset.map(debatch, batched=True, batch_size=1)
 print (test_dataset[0])
