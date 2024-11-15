@@ -316,7 +316,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_mixer_1024_n16_c128_packed',
+	output_dir='~/Desktop/fineweb_mixer_2048_n4_c128_oneresid_packed',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
@@ -332,5 +332,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-trainer.train('/home/bbadger/Desktop/fineweb_mixer_1024_n16_c128_packed/checkpoint-140000')
-#trainer.train()
+trainer.train()
+#trainer.train('/home/bbadger/Desktop/fineweb_mixer_2048_n4_c128_noresids_packed/checkpoint-20000')
