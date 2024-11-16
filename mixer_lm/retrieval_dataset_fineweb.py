@@ -216,14 +216,14 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
 		return {'input_ids': input, 'labels': labels}
-   
-    def __len__(self):
-        return len(self.encodings.input_ids)m
+
+	def __len__(self):
+		return len(self.encodings.input_ids)m
   
 
 with safe_open(filepath, framework="pt", device='cpu') as f:
-    target_train_embeddings, target_test_embeddings = f['target_train_embeddings'], f['target_test_embeddings']
-    query_train_embeddings, query_test_embeddings = f['query_train_embeddings'], f['query_test_embeddings']
+	target_train_embeddings, target_test_embeddings = f['target_train_embeddings'], f['target_test_embeddings']
+	query_train_embeddings, query_test_embeddings = f['query_train_embeddings'], f['query_test_embeddings']
 
 
 # train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings)
