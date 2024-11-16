@@ -114,7 +114,43 @@ class LanguageMixer(nn.Module):
 			x = block(x)
 		output = x
 		return output
+def debatch_input(input_data):
+	output = []
+	for i in range(len(input_data)):
+		if input_data[i].dim() > 1:
+			#print (input_data[i].shape)
+			output += list(input_data[i])
+	return {'input_ids': output}
 
+
+def batch_tokenize_input(train_text, batch_size=100, start=0, end=60000):
+	train_data, test_data = [], []
+	max_length = 512
+
+	for i in range(start, end, batch_size):
+		if isinstance(train_text[0], dict):
+			input_ids = tokenizer.batch_encode_plus(
+				train_text[i:i+batch_size]['text'],
+				add_special_tokens=False,
+				return_tensors='pt',
+				truncation=True,
+				max_length=max_length,
+				padding='max_length'
+			).input_ids
+			train_data.append(input_ids)
+		else:
+			input_ids = tokenizer.batch_encode_plus(
+				train_text[i:i+batch_size],
+				add_special_tokens=False,
+				return_tensors='pt',
+				truncation=True,
+				max_length=max_length,
+				padding='max_length'
+			).input_ids
+			train_data.append(input_ids)
+
+	train_data = debatch_input(train_data)
+	return train_data
 
 @torch.no_grad()
 def embed_input(input_tokens):
@@ -133,7 +169,7 @@ def embed_input(input_tokens):
 		t -= 1 # last token is untrained
 		last_hidden_layers = gen_model(
 			torch.tensor(input_tokens[i])
-		)[..., t, :].detach()
+		)[..., t, :].detach().to('cpu')
 		# expects the model's output to be the last hidden layer
 		embeddings.append(last_hidden_layers)
 	embeddings = torch.stack(embeddings).squeeze(1)
