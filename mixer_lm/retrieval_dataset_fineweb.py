@@ -199,11 +199,11 @@ def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, m
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-    def __init__(self, target_embeddings, query_embeddings):
-    	self.target_embeddings = target_embeddings
-    	self.query_embeddings = query_embeddings
+	def __init__(self, target_embeddings, query_embeddings):
+		self.target_embeddings = target_embeddings
+		self.query_embeddings = query_embeddings
 
-    def __getitem__(self, idx):
+	def __getitem__(self, idx):
 		input = torch.zeros((n_context, query_embeddings[0].shape[1]))
 		input[0] = self.query_embeddings[idx]
 		exclusive_target = self.target_embeddings[:idx] + self.target_embeddings[idx+1:]
