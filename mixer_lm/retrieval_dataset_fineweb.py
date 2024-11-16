@@ -133,7 +133,8 @@ def embed_input(input_tokens):
 			input_tokens[i]
 		)[..., t, :].detach().to('cpu')
 		# expects the model's output to be the last hidden layer
-		embeddings = torch.cat((embeddings, last_hidden_layers), dim=0)
+		embeddings.append(last_hidden_layers)
+	embeddings = torch.stack(embeddings).squeeze(1)
 	return embeddings
 
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
