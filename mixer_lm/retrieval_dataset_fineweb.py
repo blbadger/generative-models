@@ -22,7 +22,7 @@ from safetensors.torch import load_model, save_model, load_file
 import json
 import numpy as np
 import random
-from datasets import Dataset
+from datasets import Dataset, load_from_disk
 from safetensors.torch import save_file
 
 def FeedForward(dim, expansion_factor=4):
@@ -118,20 +118,22 @@ class LanguageMixer(nn.Module):
 
 @torch.no_grad()
 def embed_input(input_tokens):
-	embeddings = torch.tensor([])
-	pad_token = tokenizer.encode(tokenizer.pad_token)
+	embeddings = [] 
+	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
+	input_tokens = input_tokens['input_ids']
+	print (len(input_tokens))
+	print (f'pad token id: {pad_token}')
 	for i in range(0, len(input_tokens)):
 		if i % 1000 == 0:
 			print (i)
 		# right padded input, so get hidden layer from last non-pad token
 		t = 0
-		while t in range(len(input_tokens)) and input_tokens[i][t] != pad_token:
+		while (t in range(len(input_tokens[i])) and int(input_tokens[i][t]) != pad_token):
 			t += 1
 		t -= 1 # last token is untrained
-		print (t)
 		last_hidden_layers = gen_model(
-			input_tokens[i]
-		)[..., t, :].detach().to('cpu')
+			torch.tensor(input_tokens[i])
+		)[..., t, :].detach()
 		# expects the model's output to be the last hidden layer
 		embeddings.append(last_hidden_layers)
 	embeddings = torch.stack(embeddings).squeeze(1)
@@ -139,7 +141,7 @@ def embed_input(input_tokens):
 
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
-
+print ('pad token: ', tokenizer.encode(tokenizer.pad_token))
 path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
 data = load_from_disk(path)
 
@@ -218,7 +220,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		return {'input_ids': input, 'labels': labels}
 
 	def __len__(self):
-		return len(self.encodings.input_ids)m
+		return len(self.encodings.input_ids)
   
 
 with safe_open(filepath, framework="pt", device='cpu') as f:
