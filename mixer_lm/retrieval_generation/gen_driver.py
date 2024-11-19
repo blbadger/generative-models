@@ -9,6 +9,7 @@ parser = argparse.ArgumentParser(description='Optional app description')
 parser.add_argument('--n_gpus', type=int)
 parser.add_argument('--output_path', type=str)
 parser.add_argument('--n_samples', type=int)
+parser.add_argument('--start_index', type=int)
 print ('parser initialized')
 
 if __name__ == "__main__":
@@ -21,8 +22,8 @@ if __name__ == "__main__":
 
 	for gpu_index in range(n_gpus):
 		selected = int(n_samples// n_gpus)
-		start = gpu_index*selected
-		stop = gpu_index*selected + selected
+		start = gpu_index*selected + args.start_index
+		stop = gpu_index*selected + selected + args.start_index
 		bash_string += template.format(gpu_index, start, stop, output_path)
 
 	bash_string = bash_string[:-2] # strip '&/n' from last templated entry

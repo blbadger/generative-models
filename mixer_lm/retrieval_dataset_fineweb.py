@@ -164,9 +164,9 @@ def embed_input(input_tokens):
 			print (i)
 		# right padded input, so get hidden layer from last non-pad token
 		t = 0
-		while (t in range(len(input_tokens[i])) and int(input_tokens[i][t]) != pad_token):
+		while (t in range(len(input_tokens[i])-1) and int(input_tokens[i][t]) != pad_token):
 			t += 1
-		t -= 1 # last token is untrained
+		t -= 1
 		last_hidden_layers = gen_model(
 			torch.tensor(input_tokens[i])
 		)[..., t, :].detach().to('cpu')
@@ -182,8 +182,9 @@ path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
 data = load_from_disk(path)
 
 start, split, end = 0, 180000, 200000
-train_data = data[start:split]
-test_data = data[split:end]
+offset = 0
+train_data = data[start+offset:split+offset]
+test_data = data[split+offset:end+offset]
 n_vocab = len(tokenizer)
 
 # generative model initialization
@@ -198,20 +199,19 @@ target_train = embed_input(train_data)
 target_test = embed_input(test_data)
 print ('Inputs embedded')
 
-query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_0_50000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_50000_100000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_100000_150000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_150000_200000.json'))]
+query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_200000_250000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_250000_300000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_300000_350000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_350000_400000.json'))]
 
 query_train_data = batch_tokenize_input(query_text, start=start, end=split)
 query_test_data = batch_tokenize_input(query_text, start=split, end=end)
 query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 print ('Queries embedded')
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/fineweb_retrieval_200k.safetensors'
+filepath = '/home/bbadger/Desktop/fineweb_retrieval_200_400k.safetensors'
 save_file(dictionary, filepath)
 print ('Safetensors file saved')
-
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=10):
 	inputs = []

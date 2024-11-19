@@ -261,7 +261,7 @@ def batch_tokenize_input(train_text, batch_size=128, start=0, end=60000):
 def embed_input(input_tokens):
 	embeddings = []
 	for i in range(0, len(input_tokens)):
-		if i % 100 == 0:
+		if i % 1000 == 0:
 			print (i)
 		output = gen_model(
 			input_tokens[i].to(0),
@@ -274,7 +274,7 @@ def embed_input(input_tokens):
 	embeddings = debatch_input(embeddings)
 	return embeddings
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -283,18 +283,18 @@ dim = 512
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
-    'num_hidden_layers': 8,
+    'num_hidden_layers': 16,
     'num_heads': 4,
-    'vocab_size': 4096
+    'vocab_size': 8000
 }
 
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-#gen_model = LlamaForCausalLM(configuration).float()
-#load_model(gen_model, '/home/bbadger/Desktop/transformers_b32_h4_n8_lr5/checkpoint-44000/model.safetensors')
-#gen_model.eval()
+gen_model = LlamaForCausalLM(configuration).float()
+load_model(gen_model, '/home/bbadger/Desktop/transformers_b32_h4_n8_lr5/checkpoint-44000/model.safetensors')
+gen_model.eval()
 
 def in_memory_dataset():
 	# for latency profiling against storage-based datasets
@@ -349,7 +349,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 	def __len__(self):
 		return min(len(self.target_embeddings), len(self.query_embeddings))
 
-filepath = '/home/bbadger/Desktop/retrieval_transformer_1024_200k.safetensors'
+filepath = '/home/bbadger/Desktop/fineweb_retrieval_200k.safetensors'
 with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
