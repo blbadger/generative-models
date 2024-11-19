@@ -153,6 +153,23 @@ def batch_tokenize_input(train_text, batch_size=100, start=0, end=60000):
 	return train_data
 
 @torch.no_grad()
+def trans_embed_input(input_tokens):
+	embeddings = []
+	for i in range(0, len(input_tokens)):
+		if i % 1000 == 0:
+			print (i)
+		output = gen_model(
+			input_tokens[i].to(0),
+			output_hidden_states=True
+		)
+		last_hidden_layers = output.hidden_states[-1][..., -1, :].detach().to('cpu')
+		# expects the model's output to be the last hidden layer
+		embeddings.append(last_hidden_layers)
+
+	embeddings = torch.stack(embeddings).squeeze(1)
+	return embeddings
+
+@torch.no_grad()
 def embed_input(input_tokens):
 	embeddings = [] 
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
@@ -182,21 +199,39 @@ path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
 data = load_from_disk(path)
 
 start, split, end = 0, 180000, 200000
-offset = 0
+offset = 200000
 train_data = data[start+offset:split+offset]
 test_data = data[split+offset:end+offset]
 n_vocab = len(tokenizer)
 
 # generative model initialization
-tokenized_length = 512
-dim = 1024
+# tokenized_length = 512
+# dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-gen_model = LanguageMixer(n_vocab, dim, 16).float().to(device)
-load_model(gen_model, '/home/bbadger/Desktop/fineweb_mixer_1024_n16_b32/checkpoint-200000/model.safetensors')
+# gen_model = LanguageMixer(n_vocab, dim, 16).float().to(device)
+# load_model(gen_model, '/home/bbadger/Desktop/fineweb_mixer_1024_n16_b32/checkpoint-200000/model.safetensors')
+# gen_model.eval()
+
+# generative model initialization
+dim = 512
+llama_config_kwargs = {
+    'hidden_size': dim,
+    'intermediate_size': 4*dim,
+    'num_hidden_layers': 16,
+    'num_heads': 4,
+    'vocab_size': 8000
+}
+
+# Initializing a LLaMA model
+configuration = LlamaConfig(**llama_config_kwargs)
+
+# Initializing a model from the llama-7b style configuration
+gen_model = LlamaForCausalLM(configuration).float()
+load_model(gen_model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
 gen_model.eval()
 
-target_train = embed_input(train_data)
-target_test = embed_input(test_data)
+target_train = trans_embed_input(test_data)
+target_test = trans_embed_input(train_data)
 print ('Inputs embedded')
 
 query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_200000_250000.json'))]
@@ -209,7 +244,7 @@ query_test_data = batch_tokenize_input(query_text, start=split, end=end)
 query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 print ('Queries embedded')
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/fineweb_retrieval_200_400k.safetensors'
+filepath = '/home/bbadger/Desktop/fineweb_llama_retrieval_200_400k.safetensors'
 save_file(dictionary, filepath)
 print ('Safetensors file saved')
 
@@ -259,9 +294,9 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		return len(self.encodings.input_ids)
   
 
-with safe_open(filepath, framework="pt", device='cpu') as f:
-	target_train_embeddings, target_test_embeddings = f['target_train_embeddings'], f['target_test_embeddings']
-	query_train_embeddings, query_test_embeddings = f['query_train_embeddings'], f['query_test_embeddings']
+# with safe_open(filepath, framework="pt", device='cpu') as f:
+# 	target_train_embeddings, target_test_embeddings = f['target_train_embeddings'], f['target_test_embeddings']
+# 	query_train_embeddings, query_test_embeddings = f['query_train_embeddings'], f['query_test_embeddings']
 
 
 # train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings)
