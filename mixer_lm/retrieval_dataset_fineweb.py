@@ -213,9 +213,9 @@ n_vocab = len(tokenizer)
 tokenized_length = 512
 dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-gen_model = LanguageMixer(n_vocab, dim, 16).float().to(device)
-load_model(gen_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
-gen_model.eval()
+#gen_model = LanguageMixer(n_vocab, dim, 16).float().to(device)
+#load_model(gen_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
+#gen_model.eval()
 
 # generative model initialization
 dim = 512
@@ -223,7 +223,7 @@ llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
     'num_hidden_layers': 16,
-    'num_heads': 4,
+    'num_attention_heads': 4,
     'vocab_size': 8000
 }
 
@@ -231,12 +231,12 @@ llama_config_kwargs = {
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-#gen_model = LlamaForCausalLM(configuration).to(device)
-#load_model(gen_model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
-#gen_model.eval()
+gen_model = LlamaForCausalLM(configuration).to(device)
+load_model(gen_model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
+gen_model.eval()
 
-target_train = embed_input(train_data)
-target_test = embed_input(test_data)
+target_train = trans_embed_input(train_data)
+target_test = trans_embed_input(test_data)
 print ('Inputs embedded')
 
 query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_0_50000.json'))]
@@ -247,10 +247,11 @@ print ('query text length', len(query_text), query_text[0])
 query_train_data = batch_tokenize_input(query_text, start=start, end=split)
 query_test_data = batch_tokenize_input(query_text, start=split, end=end)
 print (len(query_train_data))
-query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
+
+query_train, query_test = trans_embed_input(query_train_data), trans_embed_input(query_test_data)
 print ('Queries embedded')
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/fineweb_mixer_512_retrieval_200k.safetensors'
+filepath = '/home/bbadger/Desktop/fineweb_llama_h4_retrieval_200k.safetensors'
 save_file(dictionary, filepath)
 print ('Safetensors file saved')
 
