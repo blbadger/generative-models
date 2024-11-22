@@ -17,7 +17,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from datasets import load_dataset
 import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
-from transformers import AutoModel
+from transformers import AutoModel, LlamaConfig, LlamaForCausalLM
 from safetensors.torch import load_model, save_model, load_file
 import json
 import numpy as np
@@ -114,14 +114,14 @@ class LanguageMixer(nn.Module):
 			x = block(x)
 		output = x
 		return output
+
 def debatch_input(input_data):
 	output = []
 	for i in range(len(input_data)):
 		if input_data[i].dim() > 1:
 			#print (input_data[i].shape)
 			output += list(input_data[i])
-	return {'input_ids': output}
-
+	return output
 
 def batch_tokenize_input(train_text, batch_size=100, start=0, end=60000):
 	train_data, test_data = [], []
@@ -149,20 +149,26 @@ def batch_tokenize_input(train_text, batch_size=100, start=0, end=60000):
 			).input_ids
 			train_data.append(input_ids)
 
+	print ('pre debatched length', len(train_data))
 	train_data = debatch_input(train_data)
 	return train_data
 
 @torch.no_grad()
 def trans_embed_input(input_tokens):
 	embeddings = []
+	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 	for i in range(0, len(input_tokens)):
 		if i % 1000 == 0:
 			print (i)
 		output = gen_model(
-			input_tokens[i].to(0),
+			torch.tensor(input_tokens[i]).unsqueeze(0).to(device),
 			output_hidden_states=True
 		)
-		last_hidden_layers = output.hidden_states[-1][..., -1, :].detach().to('cpu')
+		t = 0
+		while (t in range(len(input_tokens[i])-1) and int(input_tokens[i][t]) != pad_token):
+			t += 1
+		t -= 1
+		last_hidden_layers = output.hidden_states[-1][..., t, :].detach().to('cpu')
 		# expects the model's output to be the last hidden layer
 		embeddings.append(last_hidden_layers)
 
@@ -173,7 +179,7 @@ def trans_embed_input(input_tokens):
 def embed_input(input_tokens):
 	embeddings = [] 
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
-	input_tokens = input_tokens['input_ids']
+#	input_tokens = input_tokens['input_ids']
 	print (len(input_tokens))
 	print (f'pad token id: {pad_token}')
 	for i in range(0, len(input_tokens)):
@@ -199,18 +205,17 @@ path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
 data = load_from_disk(path)
 
 start, split, end = 0, 180000, 200000
-offset = 200000
-train_data = data[start+offset:split+offset]
-test_data = data[split+offset:end+offset]
+offset = 0
+train_data = data[start+offset:split+offset]['input_ids']
+test_data = data[split+offset:end+offset]['input_ids']
 n_vocab = len(tokenizer)
-
 # generative model initialization
-# tokenized_length = 512
-# dim = 1024
+tokenized_length = 512
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-# gen_model = LanguageMixer(n_vocab, dim, 16).float().to(device)
-# load_model(gen_model, '/home/bbadger/Desktop/fineweb_mixer_1024_n16_b32/checkpoint-200000/model.safetensors')
-# gen_model.eval()
+gen_model = LanguageMixer(n_vocab, dim, 16).float().to(device)
+load_model(gen_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
+gen_model.eval()
 
 # generative model initialization
 dim = 512
@@ -226,25 +231,26 @@ llama_config_kwargs = {
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-gen_model = LlamaForCausalLM(configuration).float()
-load_model(gen_model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
-gen_model.eval()
+#gen_model = LlamaForCausalLM(configuration).to(device)
+#load_model(gen_model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
+#gen_model.eval()
 
-target_train = trans_embed_input(test_data)
-target_test = trans_embed_input(train_data)
+target_train = embed_input(train_data)
+target_test = embed_input(test_data)
 print ('Inputs embedded')
 
-query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_200000_250000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_250000_300000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_300000_350000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_350000_400000.json'))]
-
+query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_0_50000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_50000_100000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_100000_150000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_150000_200000.json'))]
+print ('query text length', len(query_text), query_text[0])
 query_train_data = batch_tokenize_input(query_text, start=start, end=split)
 query_test_data = batch_tokenize_input(query_text, start=split, end=end)
+print (len(query_train_data))
 query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
 print ('Queries embedded')
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/fineweb_llama_retrieval_200_400k.safetensors'
+filepath = '/home/bbadger/Desktop/fineweb_mixer_512_retrieval_200k.safetensors'
 save_file(dictionary, filepath)
 print ('Safetensors file saved')
 
