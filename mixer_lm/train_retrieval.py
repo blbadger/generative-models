@@ -387,7 +387,7 @@ class RetrievalIndexDataset(torch.utils.data.Dataset):
 	def __len__(self):
 		return self.length
 
-filepath = '/home/bbadger/Desktop/retrieval_4096_linear_200k.safetensors' 
+filepath = '/home/bbadger/Desktop/retrieval_llama_penult_200k.safetensors' 
 with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
@@ -406,7 +406,7 @@ test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n
 print (len(target_test_embeddings), len(query_test_embeddings))
 
 # initialize retrieval model
-retrieval_model = RetrievalMixer(4096, 2, n_context)
+retrieval_model = RetrievalMixer(512, 8, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
@@ -419,7 +419,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/retrieval_mixer_4096_200k_c128',
+	output_dir='~/Desktop/retrieval_transformer_penult_200k_c128',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

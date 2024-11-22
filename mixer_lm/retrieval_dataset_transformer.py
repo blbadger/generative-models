@@ -1,6 +1,6 @@
 import os
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import os
 import torch
 from einops import rearrange
@@ -9,7 +9,8 @@ from transformers import AutoTokenizer
 from datasets import load_dataset
 import json
 import random
-from safetensors.torch import save_file
+from safetensors.torch import save_file, load_model
+from transformers import LlamaConfig, LlamaForCausalLM
 
 def debatch_input(input_data):
 	output = []
@@ -53,7 +54,7 @@ def batch_tokenize_input(train_text, batch_size=100, start=0, end=60000):
 def transformer_embed_input(input_tokens):
 	embeddings = []
 	for i in range(0, len(input_tokens)):
-		if i % 100 == 0:
+		if i % 1000 == 0:
 			print (i)
 		output = gen_model(
 			input_tokens[i].to(0),
@@ -68,7 +69,7 @@ def transformer_embed_input(input_tokens):
 	return embeddings
 
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 
 train_text, test_text = load_dataset("roneneldan/TinyStories", split="train"), load_dataset("roneneldan/TinyStories", split="train")
@@ -98,7 +99,7 @@ gen_model = LlamaForCausalLM(configuration).float().to(0)
 load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_llama_512_h4_lr5/checkpoint-28000/model.safetensors')
 
 gen_model.eval()
-target_train, target_test = embed_input(target_train_data), embed_input(target_test_data)
+target_train, target_test = transformer_embed_input(target_train_data), transformer_embed_input(target_test_data)
 
 query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60k.json'))]
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/train_output_60_100k.json'))]
@@ -115,7 +116,7 @@ query_train_data = batch_tokenize_input(query_text, start=start, end=split)
 query_test_data = batch_tokenize_input(query_text, start=split, end=end)
 for i in range(10):
 	print (query_text[i], train_text[i], '\n')
-query_train, query_test = embed_input(query_train_data), embed_input(query_test_data)
+query_train, query_test = transformer_embed_input(query_train_data), transformer_embed_input(query_test_data)
 
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
 filepath = '/home/bbadger/Desktop/retrieval_llama_penult_200k.safetensors'
