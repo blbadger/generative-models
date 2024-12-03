@@ -277,7 +277,7 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 512
+dim = 12
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
@@ -322,7 +322,7 @@ def in_memory_dataset():
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False, pre_index_epochs=100, replace=False):
+	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False, pre_index_epochs=1, replace=False):
 		self.target_embeddings = target_embeddings
 		self.query_embeddings = query_embeddings.unsqueeze(1)
 		self.n_context = n_context
@@ -334,7 +334,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 			self.expanded_size = len(target_embeddings) * pre_index_epochs
 			self.indices = []
 			for i in tqdm(range(self.expanded_size)):
-				self.indices.append(torch.multinomial(self.prob_weights, self.n_context-1, replacement=True))
+				self.indices.append(torch.multinomial(self.prob_weights, self.n_context-1, replacement=replace))
 
 	def __getitem__(self, idx):
 		input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
@@ -386,7 +386,7 @@ class RetrievalIndexDataset(torch.utils.data.Dataset):
 	def __len__(self):
 		return self.length
 
-filepath = '/home/bbadger/Desktop/fineweb_llama_retrieval_200k.safetensors' 
+filepath = '/home/bbadger/Desktop/fineweb_llama_h32_retrieval_200k.safetensors' 
 with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
@@ -401,8 +401,8 @@ if second:
 		query_train_embeddings = torch.cat((query_train_embeddings, f.get_tensor('query_train')))
 		query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
 
-n_context = 512
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=True)
+n_context = 1024
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=True, pre_index=False)
 test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=True)
 print (len(target_test_embeddings), len(query_test_embeddings))
 
@@ -412,15 +412,15 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=200,
-	per_device_train_batch_size=128,
-	per_device_eval_batch_size=128,
+	per_device_train_batch_size=64,
+	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_retrieval_transformer_512_n8_200k_c512',
+	output_dir='~/Desktop/fineweb_retrieval_llama_512_n8_h32_200k_c1024',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

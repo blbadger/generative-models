@@ -223,7 +223,7 @@ llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
     'num_hidden_layers': 16,
-    'num_attention_heads': 4,
+    'num_attention_heads': 32,
     'vocab_size': 8000
 }
 
@@ -232,7 +232,7 @@ configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
 gen_model = LlamaForCausalLM(configuration).to(device)
-load_model(gen_model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
+load_model(gen_model, '/home/bbadger/Desktop/fineweb_llama_512_n16_h32_c512/checkpoint-200000/model.safetensors')
 gen_model.eval()
 
 target_train = trans_embed_input(train_data)
@@ -251,7 +251,7 @@ print (len(query_train_data))
 query_train, query_test = trans_embed_input(query_train_data), trans_embed_input(query_test_data)
 print ('Queries embedded')
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/fineweb_llama_h4_retrieval_200k.safetensors'
+filepath = '/home/bbadger/Desktop/fineweb_llama_h32_retrieval_200k.safetensors'
 save_file(dictionary, filepath)
 print ('Safetensors file saved')
 

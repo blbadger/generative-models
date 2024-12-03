@@ -87,7 +87,7 @@ llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
     'num_hidden_layers': 8,
-    'num_attention_heads': 4,
+    'num_attention_heads': 32,
     'vocab_size': 4096
 }
 
@@ -119,5 +119,5 @@ for i in range(10):
 query_train, query_test = transformer_embed_input(query_train_data), transformer_embed_input(query_test_data)
 
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/retrieval_llama_penult_200k.safetensors'
+filepath = '/home/bbadger/Desktop/retrieval_llama_penult_h32_200k.safetensors'
 save_file(dictionary, filepath)
