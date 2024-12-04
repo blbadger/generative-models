@@ -1,4 +1,9 @@
 import os
+
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
+import os
 import torch
 import einops
 from einops import rearrange
@@ -49,7 +54,7 @@ class MixerBlock(nn.Module):
 		if expand_conv:
 			self.conv = ConvForward(length)
 		else:
-			self.conv3 = nn.Conv1d(length, length, 1)
+			self.conv = nn.Conv1d(length, length, 1)
 		self.mixer_mask = mixer_mask
 		self.expand_conv = expand_conv
 
@@ -71,14 +76,14 @@ class MixerBlock(nn.Module):
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 			else:
-				rearranged_shape = rearrange(self.conv3.weight, 'f d p -> f (d p)').shape
+				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv3.weight, 'f d p -> f (d p)') * mask
-				self.conv3.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
+				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
 		x = self.seq_layernorm(x)
-		x = self.conv3(x) + residual
+		x = self.conv(x) + residual
 		residual = x
 		x = self.patch_layernorm(x)
 		x = self.patch_ff(x) + residual
@@ -150,6 +155,7 @@ class RetrievalMixer(nn.Module):
 			).to(device)
 		self.retrieval_head = nn.Linear(dim, 1, bias=True)
 		self.cel = nn.CrossEntropyLoss()
+		self.softmax = torch.nn.Softmax(dim=1)
 
 	def forward(self, input_ids, labels=None):
 		# input_ids shape: [query_emb, target_emb_1, target_emb_2,...]
@@ -270,7 +276,6 @@ def embed_input(input_tokens):
 
 	embeddings = debatch_input(embeddings)
 	return embeddings
-
 
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -434,3 +439,60 @@ trainer = transformers.Trainer(
 
 retrieval_model.train()
 trainer.train()
+=======
+		return min(len(self.target_embeddings), len(self.query_embeddings))
+
+
+if __name__ == '__main__':
+	tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+	tokenizer.pad_token = tokenizer.eos_token
+
+	n_vocab = len(tokenizer)
+
+	# generative model initialization
+	tokenized_length = 512
+	dim = 512
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	gen_model = LanguageMixer(n_vocab, dim, 8).float()
+	load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_512_flat/checkpoint-424000/model.safetensors')
+	gen_model.eval()
+
+	  
+	filepath = '/home/bbadger/Desktop/retrieval_mixer_512_200k.safetensors'
+	with safe_open(filepath, framework="pt", device='cpu') as f:
+		target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
+		query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
+
+	n_context = 32
+	train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
+	test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
+
+	# initialize retrieval model
+	retrieval_model = RetrievalMixer(512, 8, n_context)
+	print ('training begun')
+
+	training_arguments = transformers.TrainingArguments(
+		num_train_epochs=100,
+		per_device_train_batch_size=128,
+		per_device_eval_batch_size=128,
+		warmup_steps=500,
+		eval_steps=4000,
+		save_steps=4000,
+		learning_rate=1e-4,
+		fp16=True,
+		evaluation_strategy='steps',
+		output_dir='~/Desktop/retrieval_mixer_test',
+		optim='adamw_torch',
+		overwrite_output_dir=True,
+		save_safetensors=True
+	)
+
+	trainer = transformers.Trainer(
+		model=retrieval_model,
+		train_dataset=train_dataset,
+		eval_dataset=test_dataset,
+		args=training_arguments
+	)
+
+	retrieval_model.train()
+	trainer.train()
