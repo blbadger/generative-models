@@ -23,7 +23,8 @@ from torch.optim import Adam
 import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from einops import rearrange
-
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from undercomplete_autoencoder import count_parameters
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -43,6 +44,69 @@ transform = transforms.Compose([
 			transforms.Lambda(lambda t: (t * 2) - 1)
 ])
 
+def train_autoencoder(model, dataset='churches'):
+    epochs = 500
+    alpha = 1
+    gpu_count = torch.cuda.device_count()
+    dist.init_process_group("nccl")
+    rank = dist.get_rank()
+
+    if dataset == 'churches':
+        path = pathlib.Path('/home/bbadger/Desktop/church_outdoor_train_lmdb_color_64.npy', fname='Combined')
+        dataset = npy_loader(path)
+        dset = torch.utils.data.TensorDataset(dataset)
+        start = (len(dset) // gpu_count) * rank
+        end = start + (len(dset) // gpu_count)
+        dataloader = torch.utils.data.DataLoader(dataset[start:end], batch_size=batch_size, shuffle=True)
+
+    # landscapes dataset load
+    else:
+        data_dir = pathlib.Path('/home/bbadger/Desktop/landscapes', fname='Combined')
+        train_data = ImageDataset(data_dir, rank, image_type='.jpg')
+        dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+
+    # create model and move it to GPU with id rank
+
+    device_id = rank % torch.cuda.device_count()
+    model = model.to(device_id)
+    ddp_model = DDP(model, device_ids=[device_id])
+
+    optimizer = Adam(ddp_model.parameters(), lr=1e-4)
+    ddp_model.train()
+
+    for epoch in tqdm(range(epochs)):
+        start_time = time.time()
+        total_loss = 0
+        total_mse_loss = 0
+
+        for step, batch in enumerate(dataloader):
+            if len(batch) < batch_size:
+                break
+            optimizer.zero_grad()
+            batch = batch.to(device_id) # discard class labels
+            output = ddp_model(batch)
+  #          output = torch.clip(output, min=0, max=1)
+            loss = loss_fn(output, batch)
+            loss = torch.masked_select(loss, loss > 0.01)
+            loss_size = loss.shape
+            loss = torch.mean(loss)
+            total_loss += loss.item()
+            loss.backward()
+            optimizer.step()
+
+        if rank == 0:
+            checkpoint_path = f'/home/bbadger/Desktop/churches_unetdeepwide/{epoch}'
+            if epoch % 4 == 0: torch.save(ddp_model.state_dict(), checkpoint_path)
+            tqdm.write(f"Epoch {epoch} completed in {time.time() - start_time} seconds")
+            tqdm.write(f"Average Loss: {round(total_loss / step, 5)}")
+            tqdm.write(f"Loss shape: {loss_size}")
+        dist.barrier()
+
+    dist.destroy_process_group()
+
+if __name__ == '__main__':
+    train_autoencoder(model, dataset='churches')
+t
 def npy_loader(path):
 	sample = torch.from_numpy(np.load(path))
 	sample = sample.permute(0, 3, 2, 1)
@@ -573,28 +637,28 @@ model = Unet(
 optimizer = Adam(model.parameters(), lr=1e-4)
 print (model)
 
-# epochs = 10
-# for epoch in range(epochs):
-# 	start_time = time.time()
-# 	total_loss = 0
-# 	for step, batch in enumerate(dataloader):
+epochs = 10
+for epoch in range(epochs):
+	start_time = time.time()
+	total_loss = 0
+	for step, batch in enumerate(dataloader):
 		 
-# 		if len(batch) < batch_size:
-# 			break
-# 		optimizer.zero_grad()
-# 		batch = batch.to(device) # discard class labels
-# 		timestep = torch.randint(0, timesteps, (batch_size,), device=device).long().to(device) # integer
-# 		loss = p_losses(model, batch, timestep, loss_type="l2")
-# 		total_loss += loss.item()
+ 		if len(batch) < batch_size:
+ 			break
+ 		optimizer.zero_grad()
+ 		batch = batch.to(device) # discard class labels
+ 		timestep = torch.randint(0, timesteps, (batch_size,), device=device).long().to(device) # integer
+ 		loss = p_losses(model, batch, timestep, loss_type="l2")
+ 		total_loss += loss.item()
  
-# 		loss.backward()
-# 		optimizer.step()
-# 	print (f"Epoch {epoch} completed in {time.time() - start_time} seconds")
-# 	print (f"Average Loss: {round(total_loss / step, 5)}")
+ 		loss.backward()
+ 		optimizer.step()
+ 	print (f"Epoch {epoch} completed in {time.time() - start_time} seconds")
+ 	print (f"Average Loss: {round(total_loss / step, 5)}")
 
 count_parameters(model)
 n = 64
-gen_images = sample(model, 64, batch_size=n, channels=channels)
+# gen_images = sample(model, 64, batch_size=n, channels=channels)
 # gen_images = gen_images.cpu().numpy()
-show_batch((gen_images[-1] + 1) / 2, grayscale=True)
+# show_batch((gen_images[-1] + 1) / 2, grayscale=True)
 

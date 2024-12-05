@@ -64,8 +64,8 @@ training_corpus = get_training_corpus(dataset)
 # print (next(training_corpus))
 
 # Train the new tokenizer
-tokenizer = old_tokenizer.train_new_from_iterator(training_corpus, 8136)
-tokenizer.save_pretrained("/home/bbadger/Desktop/tokenizer_textbooks_8k")
+tokenizer = old_tokenizer.train_new_from_iterator(dataloader, 8192)
+tokenizer.save_pretrained("/home/bbadger/Desktop/tiny_token_8k")
 print ("Tokenizer saved")
 
 # with open("/home/bbadger/Desktop/TinyStories-train.txt", "r") as file:

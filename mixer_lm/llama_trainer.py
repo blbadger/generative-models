@@ -92,6 +92,9 @@ model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 # gpt_config = transformers.GPT2Config(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
 # model = transformers.GPT2LMHeadModel(gpt_config)
 
+# gpt_config = transformers.OpenAIGPTConfig(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
+# model = transformers.OpenAIGPTLMHeadModel(gpt_config)
+
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -232,20 +235,25 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-train_data, test_data = batch_tokenize_input(train_text, valid_text)
-print (train_data[0])
-data_dict = {
-	'train_data': torch.stack(train_data, dim=0), 
-	'test_data': torch.stack(test_data, dim=0)
-}
 
-save_file(data_dict, '/home/bbadger/Desktop/test_file.safetensors')
+# train_data, test_data = batch_tokenize_input(train_text, valid_text)
+# train_data, test_data = debach_input(train_data), debatch_input(test_data)
+
+#data_dict = {
+#	'train_data': torch.stack(train_data, dim=0), 
+#	'test_data': torch.stack(test_data, dim=0)
+#}
+
+#save_file(data_dict, '/home/bbadger/Desktop/tinystories_tokens.safetensors')
+#print ('tokens saved')
 tensors = {}
-with safe_open("/home/bbadger/Desktop/test_file.safetensors", framework="pt", device="cpu") as f:
+with safe_open("/home/bbadger/Desktop/tinystories_tokens.safetensors", framework="pt", device="cpu") as f:
    for key in f.keys():
        tensors[key] = f.get_tensor(key)
-print (tensors['train_data'][0])
-# train_data, test_data = debetach_input(train_data), debatch_input(test_data)
+
+train_data = list(tensors['train_data'])
+test_data = list(tensors['test_data'])
+
 
 def reformat_inputs(train_data, test_data):
 	# reformat inputs for transformer model
@@ -263,16 +271,16 @@ if isinstance(model, LlamaForCausalLM):
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=3,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	num_train_epochs=20,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=5e-4,
+	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_gpt_512_h4_b16',
+	output_dir='~/Desktop/llama_512_nonorm',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 )

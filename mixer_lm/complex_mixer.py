@@ -1,8 +1,4 @@
 import os
-
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
 import prettytable
 from prettytable import PrettyTable
 
@@ -143,7 +139,7 @@ class LanguageMixer(nn.Module):
 		for i in range(tokenized_length):
 			complex_position[i, :] = 0 + scale*1j * i
 			# complex_position[i, :] = np.exp(2*scale*(math.pi)*i*1j)
-		self.complex_position = complex_position.to(device)
+		self.complex_position = complex_position
 
 	def forward(self, input_ids, labels=None):
 		x = input_ids
@@ -153,7 +149,7 @@ class LanguageMixer(nn.Module):
 
 		for block in self.mixerblocks:
 			# apply positional encoding
-			x[..., :, :] += self.complex_position
+			x[..., :, :] += self.complex_position.to(device)
 			x = block(x)
 
 		output = self.lm_head(x).to(torch.float)
@@ -165,15 +161,15 @@ class LanguageMixer(nn.Module):
 		return loss, output
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
 
-tokenized_length = 512
+tokenized_length = 64 
 dim = 256
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = LanguageMixer(tokenized_length, n_vocab, dim, 8)
+model = LanguageMixer(tokenized_length, n_vocab, dim, 1, complex_position=True)
 
 
 def count_parameters(model):
@@ -205,9 +201,9 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=200000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=20000, batch_size=1024):
 	train_data, test_data = [], []
-	max_length = 512
+	max_length = 64 
 
 	for i in range(0, length, batch_size):
 		input_ids = tokenizer.batch_encode_plus(
@@ -252,15 +248,15 @@ def reformat_inputs(train_data, test_data):
 
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=3,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	num_train_epochs=1000,
+	per_device_train_batch_size=256,
+	per_device_eval_batch_size=256,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=5e-4,
+	learning_rate=1e-6,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_cmixer_256_f_n8',
+	output_dir='~/Desktop/cmix_linear_256_b1024',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=False

@@ -1,9 +1,4 @@
 import os
-
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
-import os
 import torch
 import einops
 from einops import rearrange
@@ -76,10 +71,10 @@ class MixerBlock(nn.Module):
 				self.conv[2].weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 			else:
-				rearranged_shape = rearrange(self.conv.weight, 'f d p -> f (d p)').shape
+				rearranged_shape = rearrange(self.conv3.weight, 'f d p -> f (d p)').shape
 				mask = torch.tril(torch.ones(rearranged_shape)).to(device)
-				applied_mask = rearrange(self.conv.weight, 'f d p -> f (d p)') * mask
-				self.conv.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
+				applied_mask = rearrange(self.conv3.weight, 'f d p -> f (d p)') * mask
+				self.conv3.weight.data = rearrange(applied_mask, 'f (d p) -> f d p', p=1)
 
 		residual = x
 		x = self.seq_layernorm(x)
@@ -155,7 +150,6 @@ class RetrievalMixer(nn.Module):
 			).to(device)
 		self.retrieval_head = nn.Linear(dim, 1, bias=True)
 		self.cel = nn.CrossEntropyLoss()
-		self.softmax = torch.nn.Softmax(dim=1)
 
 	def forward(self, input_ids, labels=None):
 		# input_ids shape: [query_emb, target_emb_1, target_emb_2,...]
@@ -277,12 +271,13 @@ def embed_input(input_tokens):
 	embeddings = debatch_input(embeddings)
 	return embeddings
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
+
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
-tokenized_length = 64
-dim = 4096
+tokenized_length = 512
+dim = 12
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
@@ -290,7 +285,6 @@ def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, m
 	for m in range(multiples):
 		print ('multiple: ', m)
 		for i, query in enumerate(query_embeddings):
-			print (query_embeddings[0].shape)
 			input = torch.zeros((n_context, query_embeddings[0].shape[1]))
 			input[0] = query
 			exclusive_target = target_embeddings[:i] + target_embeddings[i+1:]
@@ -328,7 +322,7 @@ def in_memory_dataset():
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False, pre_index_epochs=100, replace=False):
+	def __init__(self, target_embeddings, query_embeddings, n_context=512, pre_index=False, pre_index_epochs=1, replace=False):
 		self.target_embeddings = target_embeddings
 		self.query_embeddings = query_embeddings.unsqueeze(1)
 		self.n_context = n_context
@@ -340,7 +334,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 			self.expanded_size = len(target_embeddings) * pre_index_epochs
 			self.indices = []
 			for i in tqdm(range(self.expanded_size)):
-				self.indices.append(torch.multinomial(self.prob_weights, self.n_context-1, replacement=True))
+				self.indices.append(torch.multinomial(self.prob_weights, self.n_context-1, replacement=replace))
 
 	def __getitem__(self, idx):
 		input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
@@ -392,22 +386,24 @@ class RetrievalIndexDataset(torch.utils.data.Dataset):
 	def __len__(self):
 		return self.length
 
-filepath = '/home/bbadger/Desktop/retrieval_llama_h32_penult_200k.safetensors' 
+filepath = '/home/bbadger/Desktop/fineweb_mixer_512_retrieval_200k.safetensors' 
 with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
-target_test_embeddings = target_test_embeddings[:len(query_test_embeddings)]
+target_test_embeddings = target_test_embeddings[:len(query_test_embeddings)] # if embedding sizes don't match
 
-#filepath = '/home/bbadger/Desktop/retrieval_mixer_512_200_550k.safetensors'
-#with safe_open(filepath, framework="pt", device='cpu') as f:
-#	target_train_embeddings = torch.cat((target_train_embeddings, f.get_tensor('target_train')))
-#	target_test_embeddings = torch.cat((target_test_embeddings, f.get_tensor('target_test')))
-#	query_train_embeddings = torch.cat((query_train_embeddings, f.get_tensor('query_train')))
-##	query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
+second=False
+if second:
+	filepath = '/home/bbadger/Desktop/fineweb_retrieval_200_400k.safetensors'
+	with safe_open(filepath, framework="pt", device='cpu') as f:
+		target_train_embeddings = torch.cat((target_train_embeddings, f.get_tensor('target_train')))
+		target_test_embeddings = torch.cat((target_test_embeddings, f.get_tensor('target_test')))
+		query_train_embeddings = torch.cat((query_train_embeddings, f.get_tensor('query_train')))
+		query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
 
 n_context = 32
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=False)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=False)
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=True, pre_index=False)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=True)
 print (len(target_test_embeddings), len(query_test_embeddings))
 
 # initialize retrieval model
@@ -424,7 +420,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/retrieval_transformer_penult_h32_200k_c32',
+	output_dir='~/Desktop/fineweb_retrieval_mixer_512_n8_200k_c32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -439,60 +435,3 @@ trainer = transformers.Trainer(
 
 retrieval_model.train()
 trainer.train()
-=======
-		return min(len(self.target_embeddings), len(self.query_embeddings))
-
-
-if __name__ == '__main__':
-	tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
-	tokenizer.pad_token = tokenizer.eos_token
-
-	n_vocab = len(tokenizer)
-
-	# generative model initialization
-	tokenized_length = 512
-	dim = 512
-	device = 'cuda' if torch.cuda.is_available() else 'cpu'
-	gen_model = LanguageMixer(n_vocab, dim, 8).float()
-	load_model(gen_model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_512_flat/checkpoint-424000/model.safetensors')
-	gen_model.eval()
-
-	  
-	filepath = '/home/bbadger/Desktop/retrieval_mixer_512_200k.safetensors'
-	with safe_open(filepath, framework="pt", device='cpu') as f:
-		target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
-		query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
-
-	n_context = 32
-	train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context)
-	test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
-
-	# initialize retrieval model
-	retrieval_model = RetrievalMixer(512, 8, n_context)
-	print ('training begun')
-
-	training_arguments = transformers.TrainingArguments(
-		num_train_epochs=100,
-		per_device_train_batch_size=128,
-		per_device_eval_batch_size=128,
-		warmup_steps=500,
-		eval_steps=4000,
-		save_steps=4000,
-		learning_rate=1e-4,
-		fp16=True,
-		evaluation_strategy='steps',
-		output_dir='~/Desktop/retrieval_mixer_test',
-		optim='adamw_torch',
-		overwrite_output_dir=True,
-		save_safetensors=True
-	)
-
-	trainer = transformers.Trainer(
-		model=retrieval_model,
-		train_dataset=train_dataset,
-		eval_dataset=test_dataset,
-		args=training_arguments
-	)
-
-	retrieval_model.train()
-	trainer.train()

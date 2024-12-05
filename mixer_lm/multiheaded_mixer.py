@@ -1,11 +1,6 @@
 import os
-
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
 import prettytable
 from prettytable import PrettyTable
-
 
 import torch
 import einops
@@ -25,13 +20,13 @@ from transformers import LlamaConfig, LlamaForCausalLM
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
-	dropout = nn.Dropout(p=0.05)
+	# dropout = nn.Dropout(p=0.05)
 	return nn.Sequential(
 		nn.Linear(dim, inner_dim),
-		nn.Dropout(p=0.05),
+		# nn.Dropout(p=0.05),
 		nn.GELU(),
 		nn.Linear(inner_dim, dim)
-	)
+      	) 
 
 class MixerHead(nn.Module):
 
@@ -41,7 +36,7 @@ class MixerHead(nn.Module):
 		self.proj_head = nn.ModuleList(
 			[nn.Linear(dim, hidden_dim)
 			for i in range(n_heads)]
-			)
+			).to(device)
 
 		self.convs = nn.ModuleList(
 			[nn.Conv1d(length, length, 1)
@@ -49,19 +44,21 @@ class MixerHead(nn.Module):
 			)
 
 		self.out_proj = nn.Linear(dim*n_heads, dim)
-		self.softmax = nn.Softmax(dim=-1)		
-		self.GeLU = nn.GELU()
+		self.softmax = nn.Softmax(dim=-2)		
 
 	def forward(self, x: torch.tensor):
 
 		for i in range(len(self.convs)):
-			masked_conv = self.softmax(torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d')))
+			masked_conv = torch.tril(self.softmax(torch.tril(rearrange(self.convs[i].weight, 'f d p -> p f d'))))
 			self.convs[i].weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
-
+			
 		hidden_layer = []
 
 		for head in range(self.n_heads):
+			print ('input shape', x.shape)
 			projection = self.proj_head[i](x)
+			print ('weights shape', projection.shape)
+			print ('conv shape', self.convs[i].weight.shape)
 			conv_projection = self.convs[i](x)
 			hidden_layer.append(conv_projection)
 
@@ -72,19 +69,18 @@ class MixerHead(nn.Module):
 
 class MixerBlock(nn.Module):
 
-	def __init__(self, dim, length, heads=4):
+	def __init__(self, dim, length):
 		super().__init__()
 		self.patch_layernorm = nn.LayerNorm(dim)
 		self.seq_layernorm = nn.LayerNorm(dim)
 		self.dim = dim
 		self.length = length
-		self.mixerhead = MixerHead(1024, 512, 512, heads)
+		self.mixerhead = MixerHead(dim, length, 1024, 2)
 		self.patch_ff = FeedForward(dim)
-
+	
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
 			x = rearrange(x, 'b p t f -> (b p) t f')
-
 		residual = x
 		x = self.seq_layernorm(x)
 		x = self.mixerhead(x) + residual
@@ -95,34 +91,53 @@ class MixerBlock(nn.Module):
 		return x
 
 
-class MultiHeadedMixer(nn.Module):
+class LanguageMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, length=512, heads=4):
+	def __init__(self, n_vocab, dim, depth):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
-		self.wte_second = nn.Linear(dim, dim)
 		self.mixerblocks = nn.ModuleList(
-			[MixerBlock(dim, length)
+			[MixerBlock(
+				dim = dim,
+				length = tokenized_length,
+				)
 			for i in range(depth)]
-			)
+			).to(device)
 	
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		self.cel = nn.CrossEntropyLoss()
 
-	def forward(self, input_ids, labels=None, **kwargs):
+	def forward(self, input_ids, labels=None):
 		x = input_ids
+		x = x.to(device)
 		x = self.wte(x)
 		for block in self.mixerblocks:
 			x = block(x)
 		
 		output = self.lm_head(x)
-		if labels.dim() > 2:
-			labels = rearrange(labels, 'b p t -> b (p t)')
+		labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
 		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous()
 		loss = self.cel(shift_logits, shift_labels)
-		return (loss, output)
+		return loss, output
+
+# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
+tokenizer.pad_token = tokenizer.eos_token
+n_vocab = len(tokenizer)
+print (tokenizer.is_fast)
+
+tokenized_length = 512
+dim = 1024
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model = LanguageMixer(n_vocab, dim, 8).to(device)
+
+#one = torch.tensor([[[1, 2, 3]]]).to(device)
+#two = torch.tensor([[[1, 2, 3]]]).to(device)
+#print (model(one, labels=one))
+#print (model(two, labels=two))
+#print (model)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -137,6 +152,12 @@ def count_parameters(model):
 	print(table)
 	print(f"Total Trainable Params: {total_params}")
 	return total_params
+
+count_parameters(model)
+
+# cached dataset
+train_text = load_dataset("roneneldan/TinyStories", split="train")
+valid_text = load_dataset("roneneldan/TinyStories", split="validation")
 
 
 def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
@@ -242,76 +263,53 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
-tokenizer.pad_token = tokenizer.eos_token
-n_vocab = len(tokenizer)
+train_data, test_data = batch_tokenize_input(train_text, valid_text)
+train_data, test_data = debatch_input(train_data), debatch_input(test_data)
 
-if __name__ == '__main__':
-	# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-	print (tokenizer.is_fast)
-	tokenized_length = 512
-	dim = 1024
-	device = 'cuda' if torch.cuda.is_available() else 'cpu'
-	model = LanguageMixer(n_vocab, dim, 8, length)
+def reformat_inputs(train_data, test_data):
+	# reformat inputs for transformer modelz`
+	for i, _ in enumerate(train_data):
+		train_data[i] = train_data[i].flatten()
 
-	# one = torch.tensor([[[1, 2, 3]]]).to(device)
-	# two = torch.tensor([[[1, 4, 3]]]).to(device)
-	# print (model(one, labels=one))
-	# print (model(two, labels=two))
-	# print (model)
-
-	count_parameters(model)
-
-	# cached dataset
-	train_text = load_dataset("roneneldan/TinyStories", split="train")
-	valid_text = load_dataset("roneneldan/TinyStories", split="validation")
-
-	train_data, test_data = batch_tokenize_input(train_text, valid_text)
-	train_data, test_data = debatch_input(train_data), debatch_input(test_data)
-
-	def reformat_inputs(train_data, test_data):
-		# reformat inputs for transformer modelz`
-		for i, _ in enumerate(train_data):
-			train_data[i] = train_data[i].flatten()
-
-		for i, _ in enumerate(test_data):
-			test_data[i] = test_data[i].flatten()
-		return train_data, test_data
+	for i, _ in enumerate(test_data):
+		test_data[i] = test_data[i].flatten()
+	return train_data, test_data
 
 
-	if isinstance(model, LlamaForCausalLM):
-		reformat_inputs(train_data, test_data)
+if isinstance(model, LlamaForCausalLM):
+	reformat_inputs(train_data, test_data)
 
 
-	mlflow.end_run()
-	print ('training begun')
+mlflow.end_run()
+print ('training begun')
 
-	training_arguments = transformers.TrainingArguments(
-		num_train_epochs=2.5,
-		per_device_train_batch_size=32,
-		per_device_eval_batch_size=32,
-		warmup_steps=500,
-		eval_steps=4000,
-		save_steps=4000,
-		learning_rate=5e-4,
-		fp16=True,
-		evaluation_strategy='steps',
-		output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_h2_softmax',
-		optim='adamw_torch',
-		overwrite_output_dir=True,
-		save_safetensors=True
-	)
+training_arguments = transformers.TrainingArguments(
+	num_train_epochs=2.9,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
+	warmup_steps=500,
+	eval_steps=4000,
+	save_steps=4000,
+	learning_rate=5e-4,
+	fp16=True,
+	evaluation_strategy='steps',
+	output_dir='~/Desktop/tinystories_mixer_1024_n8_b32_c1_h2_2soft',
+	optim='adamw_torch',
+	overwrite_output_dir=True,
+	save_safetensors=True
+)
 
-	trainer = transformers.Trainer(
-		model=model,
-		train_dataset=train_data,
-		eval_dataset=test_data,
-		args=training_arguments,
-		data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-	)
+trainer = transformers.Trainer(
+	model=model,
+	train_dataset=train_data,
+	eval_dataset=test_data,
+	args=training_arguments,
+	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+)
 
-	model.train()
-	trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'
-	for name, param in model.named_parameters():
-		print (name)
+
+model.train()
+trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'
+for name, param in model.named_parameters():
+	print (name)
 
