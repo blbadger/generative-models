@@ -1,6 +1,11 @@
 import os
+
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
 import prettytable
 from prettytable import PrettyTable
+
 
 import torch
 import einops
@@ -117,8 +122,7 @@ class MultiHeadedMixer(nn.Module):
 		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous()
 		loss = self.cel(shift_logits, shift_labels)
-		return loss, output
-
+		return (loss, output)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -163,7 +167,7 @@ def debatch_input(input_data):
 			output += list(input_data[i])
 	return output
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=4096):
+def batch_tokenize_input(train_text, test_text, length=2000, batch_size=4096):
 	train_data, test_data = [], []
 	max_length = 512
 
@@ -305,7 +309,6 @@ if __name__ == '__main__':
 		args=training_arguments,
 		data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
 	)
-
 
 	model.train()
 	trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'

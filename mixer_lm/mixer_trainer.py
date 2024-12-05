@@ -62,7 +62,8 @@ def FeedForward(dim, expansion_factor=4):
 		nn.Linear(inner_dim, dim)
 	)
 
-def LinearConvForward(dim, expansion_factor=1):
+
+def ConvForward(dim, expansion_factor=1):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
 		nn.Conv1d(dim, inner_dim, 1),
@@ -197,6 +198,7 @@ tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 8) 
+
 
 # one = torch.tensor([[[1, 4, 3]]]).to(device)
 # two = torch.tensor([[[1, 2, 3]]]).to(device)

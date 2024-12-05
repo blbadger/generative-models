@@ -1,4 +1,9 @@
 import os
+
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
+import os
 import torch
 import einops
 from einops import rearrange
@@ -15,48 +20,99 @@ from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
 import prettytable
 from prettytable import PrettyTable
+import math
 from safetensors.torch import save_file
 from safetensors import safe_open
 
 device = 0 if torch.cuda.is_available else 'cpu'
 
-dim = 512 
+dim = 512
 llama_config_kwargs = {
-    'hidden_size': dim,
-    'intermediate_size': 4*dim,
-    'num_hidden_layers': 8,
-    'num_attention_heads': 4,
-    'vocab_size': 4096
+	'hidden_size': dim,
+	'intermediate_size': 4*dim,
+	'num_hidden_layers': 8,
+	'num_attention_heads': 4,
+	'vocab_size': 4096
 }
 
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+# model = LlamaForCausalLM(configuration).float()
+
+class PositionalEncoding(nn.Module):
+
+	def __init__(self, d_model, max_len=512):
+		super().__init__()
+
+		pe = torch.zeros(max_len, d_model)
+		position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+		div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+		pe[:, 0::2] = torch.sin(position * div_term)
+		pe[:, 1::2] = torch.cos(position * div_term)
+		pe = pe.unsqueeze(0).to(device)
+		self.register_buffer('pe', pe)
+
+	def forward(self, x):
+		x = x + self.pe
+		return x
+
+class LanguageTransformer(nn.Module):
+
+	def __init__(self, n_vocab, dim, depth, n_head=8):
+		super().__init__()
+		self.wte = nn.Embedding(n_vocab, dim).to(device)
+		self.wpe = PositionalEncoding(dim)
+		self.transformerblocks = nn.ModuleList(
+			[nn.TransformerDecoderLayer(dim, n_head, dim*4) for i in range(depth)]).to(device)
+		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
+		self.cel = nn.CrossEntropyLoss()
+		self.clm_mask = nn.Transformer.generate_square_subsequent_mask(512, device=device)
+
+	def forward(self, input_ids, labels=None):
+		x = input_ids
+		x = x.to(device)
+		x = self.wte(x).squeeze(1)
+		x = self.wpe(x)
+		for block in self.transformerblocks:
+			x = block(x, x, tgt_mask=self.clm_mask, memory_mask=self.clm_mask, tgt_is_causal=True, memory_is_causal=True)
+		output = self.lm_head(x)
+		labels = rearrange(labels, 'b p t -> b (p t)')
+		output = rearrange(output, 'b t e -> b e t')
+		shift_logits = output[..., :-1].contiguous()
+		shift_labels = labels[..., 1:].contiguous()
+		loss = self.cel(shift_logits, shift_labels)
+		return loss, output
+
+# model = LanguageTransformer(4096, 512, 8)
+gpt_config = transformers.OpenAIGPTConfig(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
+model = transformers.OpenAIGPTLMHeadModel(gpt_config)
+
+# gpt_config = transformers.GPT2Config(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
+# model = transformers.GPT2LMHeadModel(gpt_config)
 
 # gpt_config = transformers.OpenAIGPTConfig(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
 # model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print (tokenizer.is_fast)
-print (model)
 
 # Causal mask check
-# model = model.to(device)
-# one = torch.tensor([[1, 2, 5]]).to(device)
-# two = torch.tensor([[1, 2, 3]]).to(device)
-# print (model(one, labels=one).logits)
-# print (model(two, labels=two).logits)
-# print (model)
+model = model.to(device)
+model.eval()
+one = torch.tensor([[1, 2, 3]]).to(device)
+two = torch.tensor([[1, 2, 3]]).to(device)
+
+print ("Ones's output: ", model(one).logits)
+print ("Two's output: ", model(two).logits)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
 	total_params = 0
-	print ()
 	for name, parameter in model.named_parameters():
 		if not parameter.requires_grad:
 			continue
@@ -101,11 +157,12 @@ def debatch_input(input_data):
 	return output
 
 
-def batch_tokenize_input(train_text, test_text, length=2000000, batch_size=1024):
+def batch_tokenize_input(train_text, test_text, length=2000, batch_size=1024):
 	train_data, test_data = [], []
 	max_length = 512
 
 	for i in range(0, length, batch_size):
+
 		input_ids = tokenizer.batch_encode_plus(
 			train_text[i:i+batch_size]['text'],
 			add_special_tokens=False,
@@ -178,8 +235,9 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
+
 # train_data, test_data = batch_tokenize_input(train_text, valid_text)
-# train_data, test_data = debetach_input(train_data), debatch_input(test_data)
+# train_data, test_data = debach_input(train_data), debatch_input(test_data)
 
 #data_dict = {
 #	'train_data': torch.stack(train_data, dim=0), 
