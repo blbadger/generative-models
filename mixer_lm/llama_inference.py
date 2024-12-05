@@ -101,12 +101,12 @@ n_vocab = len(tokenizer)
 tokenized_length = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-dim = 128
+dim = 256
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
     'num_hidden_layers': 8,
-    'num_heads': 16,
+    # 'num_heads': 16,
     'vocab_size': 4096
 }
 
@@ -117,7 +117,7 @@ configuration = LlamaConfig(**llama_config_kwargs)
 model = LlamaForCausalLM(configuration).float()
 
 
-load_model(model, '/home/bbadger/Desktop/tinystories_llama_large/checkpoint-114000/model.safetensors')
+load_model(model, '/home/bbadger/Desktop/tinystories/tinystories_llama_256/checkpoint-96000/model.safetensors')
 
 def debatch_input(input_data):
 	output = []
@@ -165,17 +165,13 @@ tokenizer.pad_token = tokenizer.eos_token
 train_text = load_dataset("roneneldan/TinyStories", split="train")
 valid_text = load_dataset("roneneldan/TinyStories", split="validation")
 
+for i, text in enumerate(valid_text):
+	if text['text'].startswith('One day, a little boy named Tim went to play with his friend, Sam'):
+		print (i)
+
 train_data, test_data = batch_tokenize_input(train_text, valid_text)
 tokens = test_data[20][..., :-50]
 print (tokenizer.decode(tokens[0]))
-
-# prompt = '''Once upon a time, there was a lively little boy named Tim. He loved to play and run all day. One day, Tim found a big bag of oats. He believed that if he ate the oats, he would be very strong.<unk>Tim ate a lot of oats every day. He felt stronger and stronger. His friends saw him and wanted to eat oats too. They believed that they would be strong like Tim.<unk>But one day, Tim ate too many oats. His tummy hurt a lot.'''
-# tokens = tokenizer.encode(
-# 				prompt,
-# 				add_special_tokens=False,
-# 				return_tensors='pt'
-# 			)
-# string = '''Once upon a time, there was a little boy named Tim. Tim had a big, orange ball. He loved his ball very much. One day, Tim met a girl named Sue. Sue had a pretty doll. Tim liked Sue's doll, and Sue liked Tim's orange ball.<unk>Tim and Sue thought about a trade. They would trade the ball for the doll. Tim was not sure. He loved his orange ball. Sue said, "I promise to take care of your ball. You can play with it when you'''
 
 print (model(tokens[..., -50:], labels=tokens[..., -50:]).loss)
 gen = True

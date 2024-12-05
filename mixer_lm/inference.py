@@ -413,6 +413,7 @@ n_vocab = len(tokenizer)
 
 #load_model(bmodel, '/home/bbadger/Desktop/tinystories_mixer_1024_n8_bmask/checkpoint-96000/model.safetensors')
 load_model(model, '/home/bbadger/Desktop/mixer_8192_linear_lean_c64/checkpoint-52110/model.safetensors')
+
 # # prompt = 'Once upon a time, there was a big dog named Barky. He wagged his tail and began to'
 
 # model.train()
@@ -467,6 +468,5 @@ def double_inference(tokens, start_pos=50):
 
 	print ('\n \n')
 	print ('Output: \n', tokenizer.decode(tokens[0][0]))
-
 
 #double_inference(tokens)
