@@ -6,6 +6,7 @@ import transformers
 from transformers import PreTrainedTokenizerFast
 from transformers import TextDataset, Trainer, TrainingArguments, AutoModelWithLMHead, DataCollatorForLanguageModeling
 import torch.nn as nn
+import torch.nn.functional as F
 import mlflow
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from datasets import load_dataset
@@ -97,7 +98,6 @@ class LanguageMixer(nn.Module):
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		if tie_weights:
 			 self.wte.weight = self.lm_head.weight
-		self.infoNCEloss = infoNCEloss()
 
 	def forward(self, input_ids, **kwargs):
 		x = input_ids
@@ -105,67 +105,65 @@ class LanguageMixer(nn.Module):
 		x = self.wte(x)
 		for i, block in enumerate(self.mixerblocks):
 			x = block(x)
-		output = self.lm_head(x)
-		if labels.dim() > 2:
-			labels = rearrange(labels, 'b p t -> b (p t)')
-		output = rearrange(output, 'b t e -> b e t')
-		shift_logits = output[..., :-1].contiguous()
-		shift_labels = labels[..., 1:].contiguous()
-		loss = self.infoNCE(shift_logits, shift_labels)
+		loss = infoNCEloss(x, matching_index=matching_index)
 		return loss, output
 
-def infoNCEloss(output, matching_index):
+def infoNCEloss(output, matching_index=None):
 	"""
 	Implements Noise-Contrastive Loss. Assumes that there is one positive pair per batch and all 
 	the rest are negative samples.
 
 	"""
-	codists = torch.exp(torch.cos(output[matching_index, ...], target[0], dim=0)/0.01) # temperature=0.1
-	nondists = torch.sum(torch.exp(torch.cos(output, target[1:])))
-	loss = torch.sum(- torch.log(codists / (codists + nondists)))
+	match_embedding = output[0, :, -1] # b t e shape
+	summary_embedding = output[matching_index, :, -1]
+	nonmatch_embeddings = torch.cat(output[1:matching_index, :, -1], output[matching_index+1:, :, -1], dim=0)
+	codists = torch.exp(torch.cos(summary_embedding, nonmatch_embedding) / 0.01) # temperature=0.1
+
+	nonmatching_cos = F.normalize(summary_embedding, p=2, dim=1) \
+					@ F.normalize(nonmatch_embedding, p=2, dim=1).T
+
+	nondists = torch.sum(torch.exp(nonmatching_cos), dim=0)
+	loss = torch.sum(-torch.log(codists / (codists + nondists)))
 	return loss
 
-def input_batch(input_tokens):
-	embeddings = []
-	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
-	for i in range(0, len(input_tokens)):
-		if i % 1000 == 0:
-			print (i)
-		output = gen_model(
-			torch.tensor(input_tokens[i]).unsqueeze(0).to(device),
-			output_hidden_states=True
-		)
-		t = 0
-		while (t in range(len(input_tokens[i])-1) and int(input_tokens[i][t]) != pad_token):
-			t += 1
-		t -= 1
-		last_hidden_layers = output.hidden_states[-1][..., t, :].detach().to('cpu')
-		# expects the model's output to be the last hidden layer
-		embeddings.append(last_hidden_layers)
 
-	embeddings = torch.stack(embeddings).squeeze(1)
-	return embeddings
+class RetrievalDataset(torch.utils.data.Dataset):
 
-@torch.no_grad()
-def embed_input(input_tokens, pad_token):
-	embeddings = [] 
-	
-	last_hidden_layers = gen_model(
-		torch.tensor(input_tokens[i])
-	)[..., t, :].detach().to('cpu')
-	# expects the model's output to be the last hidden layer
-	embeddings.append(last_hidden_layers)
-	embeddings = torch.stack(embeddings).squeeze(1)
-	return embeddings
+	def __init__(self, tokens, n_context=512):
+		self.tokens = tokens
+		self.n_context = n_context
+		self.prob_weights = torch.ones(self.target_embeddings.shape[0])
+		self.allocated_input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
+		self.pre_index = pre_index
+		self.replace = replace
 
+	def __getitem__(self, idx):
+		input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
+		input[0] = self.query_embeddings[idx]
+		self.prob_weights[idx] = 0
+		if self.pre_index:
+			indices = self.indices[idx]
+		else:
+			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=self.replace)
+
+		self.prob_weights[idx] = 1
+		input[1:] = self.target_embeddings[indices]
+
+		target_index = random.randint(1, self.n_context-1) # random index to put target embedding
+		matching_target = self.target_embeddings[idx] # target the query matches
+		input[target_index] = matching_target
+		labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
+		retrieval_dict = {'input_ids': input, 'labels': labels}
+		return retrieval_dict
+
+	def __len__(self):
+		if self.pre_index:
+			return self.expanded_size
+		else:
+			return min(len(self.query_embeddings), len(self.target_embeddings))
+  
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
-
-
-
-
-
-
 
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -175,15 +173,8 @@ tokenized_length = 512
 dim = 12
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-
-
-n_context = 512
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=True, pre_index=False)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=True)
-print (len(target_test_embeddings), len(query_test_embeddings))
-
 # initialize retrieval model
-retrieval_model = RetrievalMixer(512, 8, n_context)
+retrieval_model = LanguageMixer(512, 16, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
@@ -196,7 +187,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_retrieval_mixer_512_n8_200k_c32',
+	output_dir='~/Desktop/contrastive_mixer_fineweb_512_n8_b128',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
