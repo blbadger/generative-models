@@ -50,8 +50,6 @@ class MixerBlock(nn.Module):
 		else:
 			self.conv = nn.Conv1d(length, length, 1, padding='same')
 		self.expand_conv = expand_conv
-		#heads = 4
-		#self.mixerhead = MixerHead(1024, 512, 512, heads)
 
 	def forward(self, x: torch.tensor):
 		if x.dim() > 3:
@@ -84,8 +82,9 @@ class MixerBlock(nn.Module):
 
 class LanguageMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, tie_weights=False):
+	def __init__(self, n_vocab, dim, depth, tie_weights=False, prebatched_input=True):
 		super().__init__()
+		self.prebatched_input = prebatched_input
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.mixerblocks = nn.ModuleList(
 			[MixerBlock(
@@ -101,6 +100,8 @@ class LanguageMixer(nn.Module):
 
 	def forward(self, input_ids, **kwargs):
 		x = input_ids
+		if self.prebatched_input:
+			x = x.squeeze(0) # p b t -> b t
 		x = x.to(device)
 		x = self.wte(x)
 		for i, block in enumerate(self.mixerblocks):
@@ -129,58 +130,60 @@ def infoNCEloss(output, matching_index=None):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, tokens, n_context=512):
-		self.tokens = tokens
-		self.n_context = n_context
-		self.prob_weights = torch.ones(self.target_embeddings.shape[0])
+	def __init__(self, summary_tokens, text_tokens, batch_size=64, replace=False):
+		self.summary_tokens = summary_tokens
+		self.text_tokens = text_tokens
+		self.prob_weights = torch.ones(self.text_tokens.shape[0])
 		self.allocated_input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
-		self.pre_index = pre_index
 		self.replace = replace
+		self.batch_size = batch_size
 
 	def __getitem__(self, idx):
-		input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
-		input[0] = self.query_embeddings[idx]
+		input = torch.zeros((self.batch_size, self.text_tokens[0].shape[0])) # b t shape
+		input[0] = self.summary_tokens[idx]
 		self.prob_weights[idx] = 0
-		if self.pre_index:
-			indices = self.indices[idx]
-		else:
-			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=self.replace)
+		indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=self.replace)
 
 		self.prob_weights[idx] = 1
-		input[1:] = self.target_embeddings[indices]
+		input[1:] = self.text_tokens[indices]
 
 		target_index = random.randint(1, self.n_context-1) # random index to put target embedding
 		matching_target = self.target_embeddings[idx] # target the query matches
 		input[target_index] = matching_target
-		labels = torch.tensor(target_index-1, dtype=torch.long) # one-element label for cross-entropy loss
-		retrieval_dict = {'input_ids': input, 'labels': labels}
+		labels = torch.tensor(target_index-1, dtype=torch.long)
+		retrieval_dict = {'input_ids': input, 'matching_index': labels} # results in p b t shape upon load
 		return retrieval_dict
 
 	def __len__(self):
-		if self.pre_index:
-			return self.expanded_size
-		else:
-			return min(len(self.query_embeddings), len(self.target_embeddings))
+		return len(self.tokens)
   
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
-
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 12
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # initialize retrieval model
 retrieval_model = LanguageMixer(512, 16, n_context)
+
+# expects left padding for both text and summary
+text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512-left"
+summary_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-summaries-left"
+split_index = 180000
+text_tokens = load_from_disk(text_path, keep_in_memory=True)
+summary_tokens = load_from_disk(summary_path, keep_in_memory=True)
+train_dataset = RetrievalDataset(text_tokens[:split_index], summary_tokens[:split_index])
+test_dataset = RetrievalDataset(text_tokens[split_index:], summary_tokens[split_index:])
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=200,
-	per_device_train_batch_size=128,
-	per_device_eval_batch_size=128,
+	per_device_train_batch_size=1, # actually defined in dataset subclass
+	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
