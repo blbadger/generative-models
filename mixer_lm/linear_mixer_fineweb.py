@@ -117,7 +117,7 @@ def count_parameters(model):
 	print(f"Total Trainable Params: {total_params}")
 	return total_params
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_16k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
@@ -127,8 +127,8 @@ dim = 8192
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 1).float()
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c128-packed-debatched"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c128-packed-debatched"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c128-16k-packed-debatched"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c128-16k-packed-debatched"
 
 #map_dataset(train_path, test_path)
 datasets.config.IN_MEMORY_MAX_SIZE = 40e9
@@ -140,15 +140,15 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=256,
-	per_device_eval_batch_size=256,
+	per_device_train_batch_size=128,
+	per_device_eval_batch_size=128,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_mixer_nearlin_8192_t8k_c128',
+	output_dir='~/Desktop/fineweb_mixer_nearlin_8192_16k_c128',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,

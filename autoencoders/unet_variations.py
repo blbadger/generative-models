@@ -117,7 +117,7 @@ def show_batch(input_batch, count=0, grayscale=False, normalize=True, tag=None):
     plt.close()
     return
   
-batch_size = 32
+batch_size = 64
 image_size = 64
 channels = 3
 
@@ -147,7 +147,8 @@ count_parameters(model)
 
 def load_model(model):
     model = model.to('cpu')
-    checkpoint = torch.load('/home/bbadger/Desktop/churches_unetdeepwide/24')
+    checkpoint = torch.load('/home/bbadger/Desktop/churches_unetdeepwide/epoch_290', map_location=torch.device('cpu'))
+    
     reformatted_checkpoint = OrderedDict()
     for key, value in checkpoint.items():
         reformatted_checkpoint[key[7:]] = value
@@ -155,7 +156,8 @@ def load_model(model):
     del checkpoint
     return model.to("cpu")
 
-#model = load_model(model)
+model = load_model(model)
+print ('model_loaded')
 
 def train_autoencoder(model, dataset='churches'):
     epochs = 500
@@ -186,7 +188,7 @@ def train_autoencoder(model, dataset='churches'):
     optimizer = Adam(ddp_model.parameters(), lr=1e-4)
     ddp_model.train()
 
-    for epoch in tqdm(range(epochs)):
+    for epoch in tqdm(range(290, epochs)):
         start_time = time.time()
         total_loss = 0
         total_mse_loss = 0
@@ -207,8 +209,8 @@ def train_autoencoder(model, dataset='churches'):
             optimizer.step()
 
         if rank == 0:
-            checkpoint_path = f'/home/bbadger/Desktop/churches_unetdeepwide/{epoch}'
-            if epoch % 4 == 0: torch.save(ddp_model.state_dict(), checkpoint_path)
+            checkpoint_path = f'/home/bbadger/Desktop/churches_unetdeepwide/epoch_{epoch}'
+            if epoch % 10 == 0: torch.save(ddp_model.state_dict(), checkpoint_path)
             tqdm.write(f"Epoch {epoch} completed in {time.time() - start_time} seconds")
             tqdm.write(f"Average Loss: {round(total_loss / step, 5)}")
             tqdm.write(f"Loss shape: {loss_size}")
