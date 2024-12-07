@@ -1,5 +1,6 @@
 import prettytable
 from prettytable import PrettyTable
+
 import torch
 import einops
 from einops import rearrange
@@ -11,6 +12,8 @@ import mlflow
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from datasets import load_dataset, load_from_disk
 import sentencepiece
+from tokenizers import ByteLevelBPETokenizer
+from transformers import LlamaConfig, LlamaForCausalLM
 from safetensors import safe_open
 from safetensors.torch import save_file
 from mixer_multiconv import MultiHeadedMixer
@@ -259,15 +262,16 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 1024
-dim = 1024
+tokenized_length = 512
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
 model = LanguageMixer(n_vocab, dim, 16).float()
+#print (model)
+#count_parameters(model)
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c1024"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c1024"
-
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 def tokenization(example):
 	tokens = tokenizer.batch_encode_plus(
 		example['text'],
@@ -304,15 +308,15 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	per_device_train_batch_size=64,
+	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_mixer_1024_n16_b32_c1024',
+	output_dir='~/Desktop/fineweb_mixer_512_n16_b64',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
@@ -330,3 +334,4 @@ trainer = transformers.Trainer(
 model.train()
 trainer.train()
 # trainer.train('/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-188000')
+
