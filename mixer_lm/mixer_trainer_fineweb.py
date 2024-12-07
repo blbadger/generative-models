@@ -259,7 +259,7 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 512
+tokenized_length = 1024
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
@@ -295,7 +295,7 @@ def map_dataset(train_path, test_path, split_index=50000):
 	return
 
 #map_dataset(train_path, test_path)
-# datasets.config.IN_MEMORY_MAX_SIZE = 30e9
+datasets.config.IN_MEMORY_MAX_SIZE = 30e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 print (len(train_dataset), train_dataset[0])
@@ -304,8 +304,8 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
