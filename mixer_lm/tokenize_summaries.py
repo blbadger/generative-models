@@ -7,7 +7,7 @@ from datasets import load_dataset, load_from_disk, Dataset
 import sentencepiece
 import json
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_16k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 
 def tokenization(example, n_ctx=128):
