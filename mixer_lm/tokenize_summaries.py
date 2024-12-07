@@ -26,7 +26,7 @@ def map_dataset(path):
 	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
 	"""
 	text = load_dataset("HuggingFaceFW/fineweb-edu", split="train", name="sample-10BT", streaming=False)
-	dataset = train_text.map(tokenization, batched=False)
+	dataset = text.map(tokenization, batched=False)
 	dataset.save_to_disk(path)
 	print ('Dataset saved to disk')
 	return
