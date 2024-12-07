@@ -224,8 +224,8 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
     tokenizer.pad_token = tokenizer.eos_token
     n_vocab = len(tokenizer)
-    tokenized_length = 512
-    dim = 512
+    tokenized_length = 32
+    dim = 1024
     n_layers = 16
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = LanguageMixer(n_vocab, dim, n_layers).float().to(device)
@@ -259,7 +259,7 @@ if __name__ == "__main__":
     hamming_metrics = []
 
     # for safetensors
-    load_model(model, '/home/bbadger/Desktop/mixer_512_fineweb.safetensors')
+    load_model(model, '/home/bbadger/Desktop/model.safetensors')
     hammings = []
     for prompt in prompts:
         tokens = tokenizer.encode(

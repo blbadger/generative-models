@@ -16,6 +16,7 @@ def tokenization(example, n_ctx=128):
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=True,
+			max_length=512,
 			padding=True,
 			padding_side='left'
 		).input_ids
@@ -32,6 +33,7 @@ def map_dataset(array, path):
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=True,
+			max_length=512,
 			padding=True,
 			padding_side='left'
 		).input_ids
