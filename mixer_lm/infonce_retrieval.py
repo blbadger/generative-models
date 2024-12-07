@@ -146,7 +146,6 @@ class RetrievalDataset(torch.utils.data.Dataset):
 
 		self.prob_weights[idx] = 1
 		input[1:] = self.text_tokens[indices]
-
 		target_index = random.randint(1, self.n_context-1) # random index to put target embedding
 		matching_target = self.target_embeddings[idx] # target the query matches
 		input[target_index] = matching_target
@@ -172,7 +171,7 @@ retrieval_model = LanguageMixer(512, 16, n_context)
 
 # expects left padding for both text and summary
 text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512-left"
-summary_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-summaries-left"
+summary_path = "/home/bbadger/Desktop/contrastive-summaries-fineweb-lpad-200k"
 split_index = 180000
 text_tokens = load_from_disk(text_path, keep_in_memory=True)
 summary_tokens = load_from_disk(summary_path, keep_in_memory=True)
