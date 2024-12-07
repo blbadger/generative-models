@@ -178,12 +178,15 @@ def feature_gradient(model, input_tensor, index=0):
 
 class AbbreviatedMixer(nn.Module):
 
-    def __init__(self, model):
+    def __init__(self, model, all_modules=True, n_blocks=8):
         super().__init__()
         self.model = model
+        self.all_modules = all_modules
+        self.n_blocks = 8
 
     def forward(self, x: torch.Tensor):
-        for i in range(4):
+        n_blocks = len(self.model.mixerblocks) if self.all_modules else self.n_blocks
+        for i in range(len(self.model.mixerblocks)):
             x = self.model.mixerblocks[i](x)
         return x
 
@@ -227,8 +230,8 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = LanguageMixer(n_vocab, dim, n_layers).float().to(device)
 
-    train_text = load_dataset("roneneldan/TinyStories", split="train")
-    valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+    # train_text = load_dataset("roneneldan/TinyStories", split="train")
+    # valid_text = load_dataset("roneneldan/TinyStories", split="validation")
 
     # prompts = [
     # 'Mario, the Idea, versus Mario, the Man', 
@@ -242,8 +245,16 @@ if __name__ == "__main__":
     # 'Weather, whither by the whithywindle',
     # 'Mr and Mrs Dursley of number four, Privet Drive, were proud to say that they were perfectly normal'
     # ]
+    # prompts = [text for text in valid_text[:50]['text']]
+    valid_text = load_dataset("HuggingFaceFW/fineweb-edu", name="CC-MAIN-2024-10", split="train", streaming=True)
+    prompts = []
+    count = 0
+    for example in valid_text:
+        count += 1
+        if count > 50:
+            break
+        prompts.append(example['text'])
 
-    prompts = [text for text in valid_text[:50]['text']]
     tokenizer.pad_token = tokenizer.eos_token
     hamming_metrics = []
 
@@ -258,6 +269,7 @@ if __name__ == "__main__":
               truncation=True,
               padding='max_length', 
               max_length=tokenized_length,
+              padding_side='right' # right for Fineweb, left for TinyStories
               ).to(device)
 
         og_model = model
@@ -291,7 +303,7 @@ if __name__ == "__main__":
 
         for i in range(1):
             output = tokenizer.decode([o[i] for o in generated_tokens])
-            print (output)
+            # print (output)
             break
 
         metric = hamming_metric(tokens, generated_tokens)

@@ -169,7 +169,15 @@ if __name__ == "__main__":
             # 'Mr and Mrs Dursley of number four, Privet Drive, were proud to say that they were perfectly normal'
             # ]
 
-            prompts = [text for text in valid_text[:50]['text']]
+            # prompts = [text for text in valid_text[:50]['text']]
+            valid_text = load_dataset("HuggingFaceFW/fineweb-edu", name="CC-MAIN-2024-10", split="train", streaming=True)
+            prompts = []
+            count = 0
+            for example in valid_text:
+                count += 1
+                if count > 50:
+                    break
+                prompts.append(example['text'])
             og_model = model
 
             # for safetensors
@@ -188,6 +196,7 @@ if __name__ == "__main__":
                       truncation=True,
                       padding='max_length', 
                       max_length=tokenized_length,
+                      padding_side='right'
                       ).to(device)
 
                 
@@ -230,5 +239,6 @@ if __name__ == "__main__":
             hammings.append(hamming_metrics)
 
             print (f'Hamming metrics for dim {d}: ', hamming_metrics)
+            break
         print (hammings)
 
