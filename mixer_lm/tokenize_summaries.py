@@ -27,7 +27,6 @@ def map_dataset(array, path):
 	"""
 	tokenized_array = []
 	for sample in array:
-		print (sample)
 		tokens = tokenizer.encode_plus(
 			sample,
 			add_special_tokens=False,
