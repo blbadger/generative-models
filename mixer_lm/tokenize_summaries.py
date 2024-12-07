@@ -22,7 +22,7 @@ def tokenization(example, n_ctx=128):
 		).input_ids
     return {'input_ids': tokens}
 
-def map_dataset(array, path):
+def map_dataset(array):
 	"""
 	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
 	"""
@@ -46,7 +46,9 @@ query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/h
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_150000_200000.json'))]
 
 path = "/home/bbadger/Desktop/contrastive-summaries-fineweb-lpad-200k"
-map_dataset(query_text, path)
+dataset = map_dataset(query_text)
+dataset.save_to_disk(path)
+
 
 
 
