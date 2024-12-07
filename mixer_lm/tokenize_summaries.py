@@ -5,7 +5,7 @@ from transformers import AutoTokenizer
 import torch.nn as nn
 from datasets import load_dataset, load_from_disk, Dataset
 import sentencepiece
-import pyarrow as pa
+import json
 
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_16k")
 tokenizer.pad_token = tokenizer.eos_token
