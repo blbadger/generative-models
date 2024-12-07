@@ -45,7 +45,7 @@ query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/h
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_150000_200000.json'))]
 
 path = "/home/bbadger/Desktop/contrastive-summaries-fineweb-lpad-200k"
-map_dataset(path)
+map_dataset(query_text, path)
 
 
 
