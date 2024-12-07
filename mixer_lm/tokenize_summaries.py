@@ -36,7 +36,7 @@ def map_dataset(array, path):
 			padding_side='left'
 		).input_ids
 	output_dict = {'input_ids': tokenized_array}
-	return Dataset.from_dict(tokenized_array)
+	return Dataset.from_dict(output_dict)
 
 query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_0_50000.json'))]
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_50000_100000.json'))]
