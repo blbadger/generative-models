@@ -16,7 +16,7 @@ from safetensors.torch import load_model, save_model, load_file
 import json
 import numpy as np
 import random
-from datasets import Dataset
+from datasets import Dataset, load_from_disk, load_dataset
 from safetensors.torch import safe_open
 from tqdm import tqdm
 
@@ -130,16 +130,17 @@ def infoNCEloss(output, matching_index=None):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, summary_tokens, text_tokens, batch_size=64, replace=False):
+	def __init__(self, text_tokens, summary_tokens, batch_size=64, replace=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
-		self.prob_weights = torch.ones(self.text_tokens.shape[0])
-		self.allocated_input = torch.zeros((self.n_context, self.query_embeddings[0].shape[1]))
+		self.context_length = len(self.summary_tokens['input_ids'][0])
+		self.prob_weights = torch.ones(self.context_length)
+		self.allocated_input = torch.zeros((batch_size, self.context_length))
 		self.replace = replace
 		self.batch_size = batch_size
 
 	def __getitem__(self, idx):
-		input = torch.zeros((self.batch_size, self.text_tokens[0].shape[0])) # b t shape
+		input = torch.zeros((self.batch_size, self.context_length)) # b t shape
 		input[0] = self.summary_tokens[idx]
 		self.prob_weights[idx] = 0
 		indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=self.replace)
@@ -156,8 +157,6 @@ class RetrievalDataset(torch.utils.data.Dataset):
 	def __len__(self):
 		return len(self.tokens)
   
-
-pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
@@ -165,20 +164,24 @@ n_vocab = len(tokenizer)
 tokenized_length = 512
 dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+n_context = tokenized_length
 # initialize retrieval model
 retrieval_model = LanguageMixer(512, 16, n_context)
 
 # expects left padding for both text and summary
-text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512-left"
+text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
 summary_path = "/home/bbadger/Desktop/contrastive-summaries-fineweb-lpad-200k"
 split_index = 180000
-text_tokens = load_from_disk(text_path, keep_in_memory=True)
+text_tokens = load_from_disk(text_path, keep_in_memory=None)
+text_tokens = [next(iter(text_tokens)) for i in range(200000)]
+print (text_tokens[0])
 summary_tokens = load_from_disk(summary_path, keep_in_memory=True)
+summary_tokens = [next(iter(summary_tokens)) for i in range(200000)]
 train_dataset = RetrievalDataset(text_tokens[:split_index], summary_tokens[:split_index])
 test_dataset = RetrievalDataset(text_tokens[split_index:], summary_tokens[split_index:])
 print ('training begun')
 
+pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=200,
 	per_device_train_batch_size=1, # actually defined in dataset subclass
