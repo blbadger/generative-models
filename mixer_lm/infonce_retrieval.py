@@ -133,7 +133,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 	def __init__(self, text_tokens, summary_tokens, batch_size=64, replace=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
-		self.context_length = len(self.summary_tokens[0]['input_ids'])
+		self.context_length = len(self.summary_tokens['input_ids'][0])
 		self.prob_weights = torch.ones(self.context_length)
 		self.allocated_input = torch.zeros((batch_size, self.context_length))
 		self.replace = replace
@@ -141,14 +141,14 @@ class RetrievalDataset(torch.utils.data.Dataset):
 
 	def __getitem__(self, idx):
 		input = torch.zeros((self.batch_size, self.context_length)) # b t shape
-		input[0] = self.summary_tokens[idx]['input_ids']
+		input[0] = self.summary_tokens['input_ids'][idx]
 		self.prob_weights[idx] = 0
 		indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=self.replace)
 
 		self.prob_weights[idx] = 1
-		input[1:] = self.text_tokens[indices]['input_ids']
+		input[1:] = self.text_tokens['input_ids'][indices]
 		target_index = random.randint(1, self.n_context-1) # random index to put target embedding
-		matching_target = self.text_tokens[idx]['input_ids'] # target the query matches
+		matching_target = self.text_tokens['input_ids'][idx] # target the query matches
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index-1, dtype=torch.long)
 		retrieval_dict = {'input_ids': input, 'matching_index': labels} # results in p b t shape upon load
