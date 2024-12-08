@@ -37,7 +37,7 @@ def map_dataset(array):
 			padding='max_length',
 			padding_side='left'
 		).input_ids
-		tokenized_array.append(tokens)	
+		tokenized_array.append(tokens[0])	
 	output_dict = {'input_ids': tokenized_array}
 	return Dataset.from_dict(output_dict)
 
