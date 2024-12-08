@@ -34,10 +34,10 @@ def map_dataset(array):
 			return_tensors='pt',
 			truncation=True,
 			max_length=512,
-			padding=True,
+			padding='max_length',
 			padding_side='left'
 		).input_ids
-		tokenized_array.append(tokens)
+		tokenized_array.append(tokens)	
 	output_dict = {'input_ids': tokenized_array}
 	return Dataset.from_dict(output_dict)
 
