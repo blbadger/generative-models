@@ -173,7 +173,7 @@ text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
 summary_path = "/home/bbadger/Desktop/contrastive-summaries-fineweb-lpad-200k"
 split_index = 180000
 text_tokens = load_from_disk(text_path, keep_in_memory=None)
-summary_tokens = load_from_disk(summary_path, keep_in_memory=True)
+summary_tokens = load_from_disk(summary_path, keep_in_memory=None)
 train_dataset = RetrievalDataset(text_tokens[:split_index], summary_tokens[:split_index])
 test_dataset = RetrievalDataset(text_tokens[split_index:], summary_tokens[split_index:])
 print ('training begun')
