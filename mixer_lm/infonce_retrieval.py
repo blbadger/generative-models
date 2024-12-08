@@ -134,7 +134,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
 		self.context_length = len(self.summary_tokens[0]['input_ids'])
-		self.prob_weights = torch.ones(self.context_length)
+		self.prob_weights = torch.ones(len(summary_tokens))
 		self.allocated_input = torch.zeros((batch_size, self.context_length))
 		self.replace = replace
 		self.batch_size = batch_size
@@ -145,7 +145,8 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		self.prob_weights[idx] = 0
 		indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=self.replace)
 		self.prob_weights[idx] = 1
-		input[1:] = self.text_tokens[indices]['input_ids']
+		for i, index in enumerate(indices):
+			input[1+i] = self.text_tokens[index]['input_ids']
 		target_index = random.randint(1, self.n_context-1) # random index to put target embedding
 		matching_target = self.text_tokens[idx]['input_ids'] # target the query matches
 		input[target_index] = matching_target
