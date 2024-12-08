@@ -154,7 +154,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		return retrieval_dict
 
 	def __len__(self):
-		return len(self.tokens)
+		return len(self.summary_tokens)
   
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
