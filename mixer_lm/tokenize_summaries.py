@@ -28,21 +28,21 @@ def map_dataset(array, label='summary'):
 	"""
 	tokenized_array = []
 	count = 0 
-	for sample in array:
+	for sample in array[:10]:
 		tokens = tokenizer.encode_plus(
-			sample,
+			query_text[0],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=True,
 			max_length=512,
 			padding='max_length',
 			padding_side='left'
-		).input_ids
+		).input_ids[0]
 		tokenized_array.append(tokens[0])
-	output_dict = {label: torch.tensor(tokenized_array)}
+	output_dict = {label: torch.stack(tokenized_array, dim=0)}
 	return output_dict
 
-def extract_tokens(dataset, limit=200000, label='text'):
+def extract_tokens(dataset, limit=10, label='text'):
 	array = []
 	count = 0
 	idata = iter(dataset)
@@ -61,12 +61,12 @@ query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/h
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_150000_200000.json'))]
 
 path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
-summary_datset = map_dataset(query_text, label='summary')
+summary_dataset = map_dataset(query_text, label='summary')
 
-summary_path = "/home/bbadger/Desktop/contrastive-summaries-fineweb-lpad-200k"
-summary_tokens = load_from_disk(summary_path, keep_in_memory=None)
-text_dataset = map_dataset(text, label='text')
-datset = summary_dataset + text_dataset
+text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
+text_dataset = load_from_disk(text_path, keep_in_memory=None)
+text_dataset = map_dataset(text_dataset, label='text')
+dataset = summary_dataset + text_dataset
 save_file(dataset, path)
 
 
