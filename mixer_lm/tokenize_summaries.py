@@ -6,6 +6,7 @@ import torch.nn as nn
 from datasets import load_dataset, load_from_disk, Dataset
 import sentencepiece
 import json
+from safetensors.torch import save_file
 
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -66,7 +67,7 @@ summary_dataset = map_dataset(query_text, label='summary')
 text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
 text_dataset = load_from_disk(text_path, keep_in_memory=None)
 text_dataset = map_dataset(text_dataset, label='text')
-dataset = summary_dataset.update(text_dataset)
+dataset = {**text_dataset, **summary_dataset}
 print (dataset)
 save_file(dataset, path)
 
