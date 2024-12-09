@@ -146,7 +146,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		indices = torch.multinomial(self.prob_weights, self.batch_size-1, replacement=self.replace)
 		self.prob_weights[idx] = 1
 		input[1:] = self.text_tokens[indices]
-		target_index = random.randint(1, self.context_length-1) # random index to put target embedding
+		target_index = random.randint(1, self.batch_size-1) # random index to put target embedding
 		matching_target = torch.tensor(self.text_tokens[idx]) # target the query matches
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index-1, dtype=torch.long)
