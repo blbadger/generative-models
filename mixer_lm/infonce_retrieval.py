@@ -177,11 +177,11 @@ path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device=0) as f:
     for k in f.keys():
-        tensors[k] = f.get_tensor(k)
+        tokens[k] = f.get_tensor(k)
 
 split_index = 180000
 train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
-test_dataset = RetrievalDataset(text_tokens['text'][:split_index], summary_tokens['summary'][:split_index])
+test_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
 print ('training begun')
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
