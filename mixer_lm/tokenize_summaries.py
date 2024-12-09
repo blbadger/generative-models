@@ -31,7 +31,7 @@ def map_dataset(array, label='summary'):
 	count = 0 
 	for sample in array[:10]:
 		tokens = tokenizer.encode_plus(
-			query_text[0],
+			sample,
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=True,
@@ -46,12 +46,11 @@ def map_dataset(array, label='summary'):
 def extract_tokens(dataset, limit=10, label='text'):
 	array = []
 	count = 0
-	idata = iter(dataset)
 	for sample in dataset:
 		count += 1
 		if count > limit:
 			break
-		array.append(next(idata)['input_ids'])
+		array.append(sample['input_ids'])
 	output_dict = {label: torch.tensor(array)}
 	return output_dict
 
