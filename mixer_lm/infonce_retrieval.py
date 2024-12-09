@@ -143,7 +143,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		input = torch.zeros((self.batch_size, self.context_length)) # b t shape
 		input[0] = torch.tensor(self.summary_tokens[idx])
 		self.prob_weights[idx] = 0
-		indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=self.replace)
+		indices = torch.multinomial(self.prob_weights, self.context_length-1, replacement=self.replace)
 		self.prob_weights[idx] = 1
 		input[1:] = self.text_tokens[indices]
 		target_index = random.randint(1, self.n_context-1) # random index to put target embedding
