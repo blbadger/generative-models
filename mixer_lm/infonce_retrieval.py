@@ -182,7 +182,7 @@ print ('training begun')
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=5,
+	num_train_epochs=20,
 	per_device_train_batch_size=1, # actually defined in dataset subclass
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
