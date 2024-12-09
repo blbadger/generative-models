@@ -38,7 +38,7 @@ def map_dataset(array, label='summary'):
 			padding='max_length',
 			padding_side='left'
 		).input_ids
-		tokenized_array.append(tokens[0])	
+		tokenized_array.append(tokens[0])
 	output_dict = {label: torch.tensor(tokenized_array)}
 	return output_dict
 
@@ -53,7 +53,7 @@ def extract_tokens(dataset, limit=200000, label='text'):
 		array.append(next(idata)['input_ids'])
 	output_dict = {label: torch.tensor(array)}
 	return output_dict
-	
+
 
 query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_0_50000.json'))]
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_50000_100000.json'))]
