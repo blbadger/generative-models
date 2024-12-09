@@ -179,6 +179,7 @@ split_index = 180000
 train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
 test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:])
 print ('training begun')
+load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
@@ -205,4 +206,4 @@ trainer = transformers.Trainer(
 )
 
 retrieval_model.train()
-trainer.train('/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000')
+trainer.train()
