@@ -122,9 +122,9 @@ def infoNCEloss(output, matching_index=None):
 	cosine_sim = torch.nn.CosineSimilarity()
 	temp = 0.01
 	codists = torch.exp(cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
-	nonmatching_cos = F.normalize(summary_embedding, p=2, dim=1) @ F.normalize(nonmatch_embeddings, p=2, dim=1).T
-	nondists = torch.sum(torch.exp(cosine_sim(summary_embedding, nonmatch_embeddings)))
+	# nonmatching_cos = F.normalize(summary_embedding, p=2, dim=1) @ F.normalize(nonmatch_embeddings, p=2, dim=1).T
 	#nondists = torch.sum(torch.exp(nonmatching_cos), dim=0)
+	nondists = torch.sum(torch.exp(cosine_sim(summary_embedding, nonmatch_embeddings)))
 	loss = torch.sum(-torch.log(codists / (codists + nondists)))
 	return loss
 
@@ -142,13 +142,13 @@ class RetrievalDataset(torch.utils.data.Dataset):
 
 	def __getitem__(self, idx):
 		input = torch.zeros((self.batch_size, self.context_length)) # b t shape
-		input[0] = torch.tensor(self.summary_tokens[idx])
+		input[0] = self.summary_tokens[idx]
 		self.prob_weights[idx] = 0
 		indices = torch.multinomial(self.prob_weights, self.batch_size-1, replacement=self.replace)
 		self.prob_weights[idx] = 1
 		input[1:] = self.text_tokens[indices]
 		target_index = random.randint(1, self.batch_size-1) # random index to put target embedding
-		matching_target = torch.tensor(self.text_tokens[idx]) # target the query matches
+		matching_target = self.text_tokens[idx] # target the query matches
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index-1, dtype=torch.long)
 		retrieval_dict = {'input_ids': input.to(torch.long), 'matching_index': labels} # results in p b t shape upon load
@@ -167,13 +167,8 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 # initialize retrieval model
 retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
-print (retrieval_model)
-# expects left padding for both text and summary
-# text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
-# summary_path = "/home/bbadger/Desktop/contrastive-summaries-fineweb-lpad-200k"
-# text_tokens = load_from_disk(text_path, keep_in_memory=None)
-# summary_tokens = load_from_disk(summary_path, keep_in_memory=None)
 
+print (retrieval_model)
 path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device=0) as f:
@@ -192,7 +187,7 @@ training_arguments = transformers.TrainingArguments(
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
 	eval_steps=4000,
-	save_steps=4000,
+	save_steps=40000,
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
@@ -210,4 +205,4 @@ trainer = transformers.Trainer(
 )
 
 retrieval_model.train()
-trainer.train()
+trainer.train('/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000')
