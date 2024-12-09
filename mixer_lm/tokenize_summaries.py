@@ -38,7 +38,7 @@ def map_dataset(array, label='summary'):
 			max_length=512,
 			padding='max_length',
 			padding_side='left'
-		).input_ids[0]
+		).input_ids
 		tokenized_array.append(tokens[0])
 	output_dict = {label: torch.stack(tokenized_array, dim=0)}
 	return output_dict
@@ -65,7 +65,7 @@ summary_dataset = map_dataset(query_text, label='summary')
 
 text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
 text_dataset = load_from_disk(text_path, keep_in_memory=None)
-text_dataset = map_dataset(text_dataset, label='text')
+text_dataset = extract_tokens(text_dataset, label='text')
 dataset = {**text_dataset, **summary_dataset}
 print (dataset)
 save_file(dataset, path)
