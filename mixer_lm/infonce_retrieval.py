@@ -150,7 +150,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		matching_target = torch.tensor(self.text_tokens[idx]) # target the query matches
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index-1, dtype=torch.long)
-		retrieval_dict = {'input_ids': input, 'matching_index': labels} # results in p b t shape upon load
+		retrieval_dict = {'input_ids': input.to(torch.long), 'matching_index': labels} # results in p b t shape upon load
 		return retrieval_dict
 
 	def __len__(self):
