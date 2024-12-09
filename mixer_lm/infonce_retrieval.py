@@ -133,7 +133,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 	def __init__(self, text_tokens, summary_tokens, batch_size=64, replace=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
-		self.context_length = len(self.summary_tokens[0]['input_ids'])
+		self.context_length = len(summary_tokens[0])
 		self.prob_weights = torch.ones(len(summary_tokens))
 		self.allocated_input = torch.zeros((batch_size, self.context_length))
 		self.replace = replace
@@ -141,14 +141,13 @@ class RetrievalDataset(torch.utils.data.Dataset):
 
 	def __getitem__(self, idx):
 		input = torch.zeros((self.batch_size, self.context_length)) # b t shape
-		input[0] = torch.tensor(self.summary_tokens[idx]['input_ids'])
+		input[0] = torch.tensor(self.summary_tokens[idx])
 		self.prob_weights[idx] = 0
 		indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=self.replace)
 		self.prob_weights[idx] = 1
-		for i, index in enumerate(indices):
-			input[1+i] = torch.tensor(self.text_tokens[index]['input_ids'])
+		input[1:] = self.text_tokens[indices]
 		target_index = random.randint(1, self.n_context-1) # random index to put target embedding
-		matching_target = torch.tensor(self.text_tokens[idx]['input_ids']) # target the query matches
+		matching_target = torch.tensor(self.text_tokens[idx]) # target the query matches
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index-1, dtype=torch.long)
 		retrieval_dict = {'input_ids': input, 'matching_index': labels} # results in p b t shape upon load
@@ -169,13 +168,20 @@ n_context = tokenized_length
 retrieval_model = LanguageMixer(512, 16, n_context)
 
 # expects left padding for both text and summary
-text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
-summary_path = "/home/bbadger/Desktop/contrastive-summaries-fineweb-lpad-200k"
+# text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
+# summary_path = "/home/bbadger/Desktop/contrastive-summaries-fineweb-lpad-200k"
+# text_tokens = load_from_disk(text_path, keep_in_memory=None)
+# summary_tokens = load_from_disk(summary_path, keep_in_memory=None)
+
+path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
+tokens = {}
+with safe_open(path, framework="pt", device=0) as f:
+    for k in f.keys():
+        tensors[k] = f.get_tensor(k)
+
 split_index = 180000
-text_tokens = load_from_disk(text_path, keep_in_memory=None)
-summary_tokens = load_from_disk(summary_path, keep_in_memory=None)
-train_dataset = RetrievalDataset(text_tokens, summary_tokens)
-test_dataset = RetrievalDataset(text_tokens, summary_tokens)
+train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
+test_dataset = RetrievalDataset(text_tokens['text'][:split_index], summary_tokens['summary'][:split_index])
 print ('training begun')
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
