@@ -66,7 +66,8 @@ summary_dataset = map_dataset(query_text, label='summary')
 text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
 text_dataset = load_from_disk(text_path, keep_in_memory=None)
 text_dataset = map_dataset(text_dataset, label='text')
-dataset = summary_dataset + text_dataset
+dataset = summary_dataset.update(text_dataset)
+print (dataset)
 save_file(dataset, path)
 
 
