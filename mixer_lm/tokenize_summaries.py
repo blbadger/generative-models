@@ -29,7 +29,7 @@ def map_dataset(array, label='summary'):
 	"""
 	tokenized_array = []
 	count = 0 
-	for sample in array[:10]:
+	for sample in array:
 		tokens = tokenizer.encode_plus(
 			sample,
 			add_special_tokens=False,
@@ -43,7 +43,7 @@ def map_dataset(array, label='summary'):
 	output_dict = {label: torch.stack(tokenized_array, dim=0)}
 	return output_dict
 
-def extract_tokens(dataset, limit=10, label='text'):
+def extract_tokens(dataset, limit=200000, label='text'):
 	array = []
 	count = 0
 	for sample in dataset:
@@ -67,7 +67,6 @@ text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
 text_dataset = load_from_disk(text_path, keep_in_memory=None)
 text_dataset = extract_tokens(text_dataset, label='text')
 dataset = {**text_dataset, **summary_dataset}
-print (dataset)
 save_file(dataset, path)
 
 
