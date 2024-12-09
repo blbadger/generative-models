@@ -82,7 +82,7 @@ class MixerBlock(nn.Module):
 
 class LanguageMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth, tie_weights=False, prebatched_input=True):
+	def __init__(self, n_vocab, dim, depth, prebatched_input=True):
 		super().__init__()
 		self.prebatched_input = prebatched_input
 		self.wte = nn.Embedding(n_vocab, dim)
@@ -95,17 +95,18 @@ class LanguageMixer(nn.Module):
 			for i in range(depth)]
 			).to(device)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
-		if tie_weights:
-			 self.wte.weight = self.lm_head.weight
 
-	def forward(self, input_ids, **kwargs):
+
+	def forward(self, input_ids, matching_index, **kwargs):
 		x = input_ids
+		#print (input_ids[0], matching_index)
 		if self.prebatched_input:
 			x = x.squeeze(0) # p b t -> b t
 		x = x.to(device)
 		x = self.wte(x)
 		for i, block in enumerate(self.mixerblocks):
 			x = block(x)
+		output = x
 		loss = infoNCEloss(x, matching_index=matching_index)
 		return loss, output
 
@@ -117,13 +118,13 @@ def infoNCEloss(output, matching_index=None):
 	"""
 	match_embedding = output[0, :, -1] # b t e shape
 	summary_embedding = output[matching_index, :, -1]
-	nonmatch_embeddings = torch.cat(output[1:matching_index, :, -1], output[matching_index+1:, :, -1], dim=0)
-	codists = torch.exp(torch.cos(summary_embedding, nonmatch_embedding) / 0.01) # temperature=0.1
-
-	nonmatching_cos = F.normalize(summary_embedding, p=2, dim=1) \
-					@ F.normalize(nonmatch_embedding, p=2, dim=1).T
-
-	nondists = torch.sum(torch.exp(nonmatching_cos), dim=0)
+	nonmatch_embeddings = torch.cat((output[1:matching_index, :, -1], output[matching_index+1:, :, -1]), dim=0)
+	cosine_sim = torch.nn.CosineSimilarity()
+	temp = 0.01
+	codists = torch.exp(cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
+	nonmatching_cos = F.normalize(summary_embedding, p=2, dim=1) @ F.normalize(nonmatch_embeddings, p=2, dim=1).T
+	nondists = torch.sum(torch.exp(cosine_sim(summary_embedding, nonmatch_embeddings)))
+	#nondists = torch.sum(torch.exp(nonmatching_cos), dim=0)
 	loss = torch.sum(-torch.log(codists / (codists + nondists)))
 	return loss
 
@@ -165,8 +166,8 @@ dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 # initialize retrieval model
-retrieval_model = LanguageMixer(512, 16, n_context)
-
+retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
+print (retrieval_model)
 # expects left padding for both text and summary
 # text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
 # summary_path = "/home/bbadger/Desktop/contrastive-summaries-fineweb-lpad-200k"
@@ -181,12 +182,12 @@ with safe_open(path, framework="pt", device=0) as f:
 
 split_index = 180000
 train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
-test_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
+test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:])
 print ('training begun')
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=200,
+	num_train_epochs=5,
 	per_device_train_batch_size=1, # actually defined in dataset subclass
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
@@ -195,7 +196,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_mixer_fineweb_512_n8_b128',
+	output_dir='~/Desktop/contrastive_mixer_fineweb_512_n8_b64',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
