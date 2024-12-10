@@ -150,6 +150,7 @@ if __name__ == "__main__":
 
             # Initializing a model from the llama-7b style configuration
             model = LlamaForCausalLM(configuration).float()
+            print (model)
 
             train_text = load_dataset("roneneldan/TinyStories", split="train")
             valid_text = load_dataset("roneneldan/TinyStories", split="validation")

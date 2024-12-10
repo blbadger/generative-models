@@ -110,6 +110,20 @@ class LanguageMixer(nn.Module):
 		loss = infoNCEloss(x, matching_index=matching_index)
 		return loss, output
 
+
+class RetrievalTransformer(nn.Module):
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, input_ids, matching_index, *kwargs):
+        # LlamaModel forward pass
+        model_outputs = self.model(input_ids)
+        loss = infoNCEloss(model_output, matching_index=matching_index)
+
+        return loss, output
+
 def infoNCEloss(output, matching_index=None):
 	"""
 	Implements Noise-Contrastive Loss. Assumes that there is one positive pair per batch and all 
@@ -166,10 +180,23 @@ dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 # initialize retrieval model
-retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
+# retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
+# path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
 
-print (retrieval_model)
-path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
+llama_config_kwargs = {
+    'hidden_size': dim,
+    'intermediate_size': 4*dim,
+    'num_hidden_layers': 16,
+    'num_attention_heads': 4,
+    'vocab_size': 8000
+}
+
+# Initializing a LLaMA model
+configuration = LlamaConfig(**llama_config_kwargs)
+model = LlamaForCausalLM(configuration)
+retrieval_model = RetrievalTransformer(model).float()
+
+# print (retrieval_model)
 tokens = {}
 with safe_open(path, framework="pt", device=0) as f:
     for k in f.keys():
@@ -183,7 +210,7 @@ load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/che
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=2000,
+	num_train_epochs=2,
 	per_device_train_batch_size=1, # actually defined in dataset subclass
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
