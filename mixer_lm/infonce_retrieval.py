@@ -11,13 +11,12 @@ import mlflow
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from datasets import load_dataset
 import sentencepiece
-from transformers import AutoModel
-from safetensors.torch import load_model, save_model, load_file
+from transformers import AutoModel, LlamaConfig, LlamaForCausalLM
+from safetensors.torch import load_model, save_model, load_file, safe_open
 import json
 import numpy as np
 import random
 from datasets import Dataset, load_from_disk, load_dataset
-from safetensors.torch import safe_open
 from tqdm import tqdm
 
 def FeedForward(dim, expansion_factor=4):
@@ -119,10 +118,9 @@ class RetrievalTransformer(nn.Module):
 
     def forward(self, input_ids, matching_index, *kwargs):
         # LlamaModel forward pass
-        model_outputs = self.model(input_ids)
+        model_output = self.model(input_ids)
         loss = infoNCEloss(model_output, matching_index=matching_index)
-
-        return loss, output
+        return loss, model_output
 
 def infoNCEloss(output, matching_index=None):
 	"""
@@ -194,6 +192,7 @@ llama_config_kwargs = {
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
 model = LlamaForCausalLM(configuration)
+load_model(model, '/home/bbadger/Desktop/fineweb_llama_512_n8_h4/checkpoint-164000/model.safetensors')
 retrieval_model = RetrievalTransformer(model).float()
 
 # print (retrieval_model)
@@ -215,11 +214,11 @@ training_arguments = transformers.TrainingArguments(
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
 	eval_steps=4000,
-	save_steps=40000,
+	save_steps=16000,
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_mixer_fineweb_512_n8_b64',
+	output_dir='~/Desktop/contrastive_mixer_llama_512_b64',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
