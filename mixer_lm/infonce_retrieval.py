@@ -205,7 +205,7 @@ with safe_open(path, framework="pt", device=0) as f:
 	for k in f.keys():
 		tokens[k] = f.get_tensor(k)
 
-split_index = 180000
+split_index = 190000
 train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
 test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:])
 print ('training begun')
@@ -217,8 +217,8 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=1, # actually defined in dataset subclass
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
-	eval_steps=4000,
-	save_steps=16000,
+	eval_steps=20000,
+	save_steps=20000,
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
