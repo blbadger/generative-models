@@ -112,12 +112,15 @@ class LanguageMixer(nn.Module):
 
 class RetrievalTransformer(nn.Module):
 
-    def __init__(self, model):
+    def __init__(self, model, prebatched=True):
         super().__init__()
         self.model = model
+        self.prebatched = prebatched
 
     def forward(self, input_ids, matching_index, *kwargs):
         # LlamaModel forward pass
+        if self.prebatched_input:
+			x = x.squeeze(0) # p b t -> b t
         model_output = self.model(input_ids)
         loss = infoNCEloss(model_output, matching_index=matching_index)
         return loss, model_output
