@@ -119,9 +119,9 @@ class RetrievalTransformer(nn.Module):
 
 	def forward(self, input_ids, matching_index, *kwargs):
 		# LlamaModel forward pass
-		if self.prebatched_input:
-			x = x.squeeze(0) # p b t -> b t
-		model_output = self.model(input_ids)
+		if self.prebatched:
+			input_ids = input_ids.squeeze(0) # p b t -> b t
+		model_output = self.model(input_ids)[0]
 		loss = infoNCEloss(model_output, matching_index=matching_index)
 		return loss, model_output
 
@@ -146,7 +146,7 @@ def infoNCEloss(output, matching_index=None):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, text_tokens, summary_tokens, batch_size=64, replace=False):
+	def __init__(self, text_tokens, summary_tokens, batch_size=32, replace=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
 		self.context_length = len(summary_tokens[0])
@@ -222,7 +222,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_mixer_llama_512_b64',
+	output_dir='~/Desktop/contrastive_mixer_llama_512_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
