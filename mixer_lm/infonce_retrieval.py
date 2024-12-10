@@ -179,7 +179,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 # initialize retrieval model
 # retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
-# path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
+# load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
 
 llama_config_kwargs = {
     'hidden_size': dim,
@@ -192,10 +192,11 @@ llama_config_kwargs = {
 # Initializing a LLaMA model
 configuration = LlamaConfig(**llama_config_kwargs)
 model = LlamaForCausalLM(configuration)
-load_model(model, '/home/bbadger/Desktop/fineweb_llama_512_n8_h4/checkpoint-164000/model.safetensors')
+load_model(model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
 retrieval_model = RetrievalTransformer(model).float()
 
 # print (retrieval_model)
+path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device=0) as f:
     for k in f.keys():
@@ -205,7 +206,7 @@ split_index = 180000
 train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
 test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:])
 print ('training begun')
-load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
+
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
