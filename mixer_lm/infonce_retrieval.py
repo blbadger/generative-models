@@ -112,18 +112,18 @@ class LanguageMixer(nn.Module):
 
 class RetrievalTransformer(nn.Module):
 
-    def __init__(self, model, prebatched=True):
-        super().__init__()
-        self.model = model
-        self.prebatched = prebatched
+	def __init__(self, model, prebatched=True):
+		super().__init__()
+		self.model = model
+		self.prebatched = prebatched
 
-    def forward(self, input_ids, matching_index, *kwargs):
-        # LlamaModel forward pass
-        if self.prebatched_input:
+	def forward(self, input_ids, matching_index, *kwargs):
+		# LlamaModel forward pass
+		if self.prebatched_input:
 			x = x.squeeze(0) # p b t -> b t
-        model_output = self.model(input_ids)
-        loss = infoNCEloss(model_output, matching_index=matching_index)
-        return loss, model_output
+		model_output = self.model(input_ids)
+		loss = infoNCEloss(model_output, matching_index=matching_index)
+		return loss, model_output
 
 def infoNCEloss(output, matching_index=None):
 	"""
@@ -185,11 +185,11 @@ n_context = tokenized_length
 # load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
 
 llama_config_kwargs = {
-    'hidden_size': dim,
-    'intermediate_size': 4*dim,
-    'num_hidden_layers': 16,
-    'num_attention_heads': 4,
-    'vocab_size': 8000
+	'hidden_size': dim,
+	'intermediate_size': 4*dim,
+	'num_hidden_layers': 16,
+	'num_attention_heads': 4,
+	'vocab_size': 8000
 }
 
 # Initializing a LLaMA model
@@ -202,8 +202,8 @@ retrieval_model = RetrievalTransformer(model).float()
 path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device=0) as f:
-    for k in f.keys():
-        tokens[k] = f.get_tensor(k)
+	for k in f.keys():
+		tokens[k] = f.get_tensor(k)
 
 split_index = 180000
 train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
