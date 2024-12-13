@@ -131,8 +131,8 @@ def infoNCEloss(output, matching_index=None):
 	the rest are negative samples.
 
 	"""
-	match_embedding = output[0, :, -1] # b t e shape
-	summary_embedding = output[matching_index, :, -1]
+	summary_embedding = output[0, :, -1] # b t e shape
+	match_embedding = output[matching_index, :, -1]
 	nonmatch_embeddings = torch.cat((output[1:matching_index, :, -1], output[matching_index+1:, :, -1]), dim=0)
 	cosine_sim = torch.nn.CosineSimilarity(dim=1)
 	temp = 0.01
