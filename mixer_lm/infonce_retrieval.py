@@ -98,7 +98,7 @@ class LanguageMixer(nn.Module):
 
 	def forward(self, input_ids, matching_index, **kwargs):
 		x = input_ids
-		#print (input_ids[0], matching_index)
+		#print (input_ids[0][1], matching_index)
 		if self.prebatched_input:
 			x = x.squeeze(0) # p b t -> b t
 		x = x.to(device)
@@ -134,7 +134,7 @@ def infoNCEloss(output, matching_index=None):
 	match_embedding = output[0, :, -1] # b t e shape
 	summary_embedding = output[matching_index, :, -1]
 	nonmatch_embeddings = torch.cat((output[1:matching_index, :, -1], output[matching_index+1:, :, -1]), dim=0)
-	cosine_sim = torch.nn.CosineSimilarity()
+	cosine_sim = torch.nn.CosineSimilarity(dim=1)
 	temp = 0.01
 	codists = torch.exp(cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
 	# nonmatching_cos = F.normalize(summary_embedding, p=2, dim=1) @ F.normalize(nonmatch_embeddings, p=2, dim=1).T
@@ -180,9 +180,9 @@ tokenized_length = 512
 dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
-# initialize retrieval model
-# retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
-# load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
+#initialize retrieval model
+retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
+load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
 
 llama_config_kwargs = {
 	'hidden_size': dim,
@@ -193,10 +193,10 @@ llama_config_kwargs = {
 }
 
 # Initializing a LLaMA model
-configuration = LlamaConfig(**llama_config_kwargs)
-model = LlamaForCausalLM(configuration)
-load_model(model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
-retrieval_model = RetrievalTransformer(model).float()
+#configuration = LlamaConfig(**llama_config_kwargs)
+#model = LlamaForCausalLM(configuration)
+#load_model(model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
+#retrieval_model = RetrievalTransformer(model).float()
 
 # print (retrieval_model)
 path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
@@ -210,7 +210,6 @@ train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary']
 test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:])
 print ('training begun')
 
-
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
@@ -222,7 +221,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_mixer_llama_512_b32',
+	output_dir='~/Desktop/contrastive_mixer_512_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
