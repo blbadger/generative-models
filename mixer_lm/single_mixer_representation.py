@@ -141,12 +141,12 @@ def octave(single_input, target_output, iterations, learning_rates):
 
     for i in range(iterations):
         # input_grad, loss = layer_gradient(model, single_input, target_output)
-        input_grad, loss = feature_gradient(model, single_input, index=2)
+        input_grad, loss = layer_gradient(model, single_input, target_output)
         single_input = single_input.detach()
         single_input -= (start_lr*(iterations-i)/iterations + end_lr*i/iterations)*input_grad
     return single_input
 
-def generate_singleinput(model, target, lr=2): # 0.002 for most
+def generate_singleinput(model, target, lr=0.02): # 0.002 for most
     random_input = torch.randn(embedding.shape).to(device)
     single_input = octave(random_input, target, 500, [lr, lr/10]) 
     return single_input
@@ -178,12 +178,15 @@ def feature_gradient(model, input_tensor, index=0):
 
 class AbbreviatedMixer(nn.Module):
 
-    def __init__(self, model):
+    def __init__(self, model, all_modules=True, n_blocks=8):
         super().__init__()
         self.model = model
+        self.all_modules = all_modules
+        self.n_blocks = 8
 
     def forward(self, x: torch.Tensor):
-        for i in range(4):
+        n_blocks = len(self.model.mixerblocks) if self.all_modules else self.n_blocks
+        for i in range(len(self.model.mixerblocks)):
             x = self.model.mixerblocks[i](x)
         return x
 
@@ -218,16 +221,17 @@ def count_parameters(model):
 
 
 if __name__ == "__main__":
-    tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+    tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
     tokenizer.pad_token = tokenizer.eos_token
     n_vocab = len(tokenizer)
-    tokenized_length = 512
-    dim = 512
+    tokenized_length = 128
+    dim = 1024
+    n_layers = 16
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = LanguageMixer(n_vocab, dim, 8).float().to(device)
+    model = LanguageMixer(n_vocab, dim, n_layers).float().to(device)
 
-    train_text = load_dataset("roneneldan/TinyStories", split="train")
-    valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+    # train_text = load_dataset("roneneldan/TinyStories", split="train")
+    # valid_text = load_dataset("roneneldan/TinyStories", split="validation")
 
     # prompts = [
     # 'Mario, the Idea, versus Mario, the Man', 
@@ -241,12 +245,21 @@ if __name__ == "__main__":
     # 'Weather, whither by the whithywindle',
     # 'Mr and Mrs Dursley of number four, Privet Drive, were proud to say that they were perfectly normal'
     # ]
+    # prompts = [text for text in valid_text[:50]['text']]
+    valid_text = load_dataset("HuggingFaceFW/fineweb-edu", name="CC-MAIN-2024-10", split="train", streaming=True)
+    prompts = []
+    count = 0
+    for example in valid_text:
+        count += 1
+        if count > 50:
+            break
+        prompts.append(example['text'])
 
-    prompts = [text for text in valid_text[:10]['text']]
     tokenizer.pad_token = tokenizer.eos_token
     hamming_metrics = []
+
     # for safetensors
-    load_model(model, '/home/bbadger/Desktop/mixer_512_long.safetensors')
+    load_model(model, '/home/bbadger/Desktop/model.safetensors')
     hammings = []
     for prompt in prompts:
         tokens = tokenizer.encode(
@@ -256,15 +269,15 @@ if __name__ == "__main__":
               truncation=True,
               padding='max_length', 
               max_length=tokenized_length,
+              padding_side='right' # right for Fineweb, left for TinyStories
               ).to(device)
 
         og_model = model
-        # load_model(model, '/home/bbadger/Desktop/tinystories/tinystories_mixer_512_flat/checkpoint-424000/model.safetensors')
         a_model = AbbreviatedMixer(model)
         embedding = og_model.wte(tokens)
 
         shifted_embedding = embedding + 0.05*torch.randn(embedding.shape).to(device)
-        # print (f'Shifted embedding distance: {torch.sum(torch.abs(embedding - shifted_embedding))}')
+        print (f'Shifted embedding distance: {torch.sum(torch.abs(embedding - shifted_embedding))}')
         embedding_weight = og_model.wte.weight.float() # convert to float in case model is in 16-bit precision
         inverse_embedding = torch.linalg.pinv(embedding_weight.cpu()).to(device)
         # print ('inverse embedding computed')
@@ -275,14 +288,14 @@ if __name__ == "__main__":
         with torch.no_grad():
             shifted_target_tensor = a_model(shifted_embedding).to(device)
             target_tensor = a_model(embedding).to(device)
-        # print (f'Shifted output distance: {torch.sum(torch.abs(shifted_target_tensor - target_tensor))}')
+        print (f'Shifted output distance: {torch.sum(torch.abs(shifted_target_tensor - target_tensor))}')
 
         embedding = embedding.detach()
         generated_input = generate_singleinput(a_model, target_tensor)
         g_input = generated_input
 
         generated_target_tensor = a_model(g_input).to(device)
-        # print (f'Generated output distance: {torch.sum(torch.abs(generated_target_tensor - target_tensor))}')
+        print (f'Generated output distance: {torch.sum(torch.abs(generated_target_tensor - target_tensor))}')
 
         logits = torch.matmul(generated_input, inverse_embedding)
         topk_k = 5
@@ -290,14 +303,12 @@ if __name__ == "__main__":
 
         for i in range(1):
             output = tokenizer.decode([o[i] for o in generated_tokens])
-            print (output)
+            # print (output)
             break
 
-        # print ('\n')
-        # print (generated_tokens.shape)
         metric = hamming_metric(tokens, generated_tokens)
         print (metric)
         hamming_metrics.append(metric)
     hammings.append(hamming_metrics)
-    print (f'Hamming metrics for dim {d}: ', hamming_metrics)
+    print (f'Hamming metrics for dim {dim}: ', hamming_metrics)
     print (hammings)

@@ -41,7 +41,7 @@ def octave(single_input, target_output, iterations, learning_rates):
 
     for i in range(iterations):
         # input_grad, loss = layer_gradient(model, single_input, target_output)
-        input_grad, loss = feature_gradient(model, single_input, index=0)
+        input_grad, loss = layer_gradient(model, single_input, target_output)
         single_input = single_input.detach()
         single_input -= (start_lr*(iterations-i)/iterations + end_lr*i/iterations)*input_grad
     return single_input
@@ -88,7 +88,7 @@ class AbbreviatedModel(nn.Module):
         # Matrix mult instead of embedding to prevent type incompatibility
         position_ids = torch.tensor([[i for i in range(x.shape[1])]]).to(device)
 
-        for i in range(6):
+        for i in range(16):
             x = self.model.model.layers[i](x, position_ids=position_ids)[0]
 
         return x
@@ -123,8 +123,8 @@ def hamming_metric(input_tokens, generated_tokens):
 
 
 if __name__ == "__main__":
-    # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-    tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+
+    tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
     tokenizer.pad_token = tokenizer.eos_token
     n_vocab = len(tokenizer)
     dims = [512]
@@ -134,15 +134,15 @@ if __name__ == "__main__":
         sorted_dirs = sorted(os.listdir(root))[:-1] # remove 'llama.py'
         sorted_dirs.sort(key=lambda dir: int(dir[11:]))
         for dir in sorted_dirs:
-            tokenized_length = 6
+            tokenized_length = 512
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             dim = d
             llama_config_kwargs = {
                 'hidden_size': dim,
                 'intermediate_size': 4*dim,
-                'num_hidden_layers': 8,
-                'num_attention_heads': 32,
-                'vocab_size': 4096
+                'num_hidden_layers': 16,
+                'num_attention_heads': 4,
+                'vocab_size': 8000
             }
 
             # Initializing a LLaMA model
@@ -150,6 +150,7 @@ if __name__ == "__main__":
 
             # Initializing a model from the llama-7b style configuration
             model = LlamaForCausalLM(configuration).float()
+            print (model)
 
             train_text = load_dataset("roneneldan/TinyStories", split="train")
             valid_text = load_dataset("roneneldan/TinyStories", split="validation")
@@ -169,13 +170,21 @@ if __name__ == "__main__":
             # 'Mr and Mrs Dursley of number four, Privet Drive, were proud to say that they were perfectly normal'
             # ]
 
-            prompts = [text for text in valid_text[:10]['text']]
+            # prompts = [text for text in valid_text[:50]['text']]
+            valid_text = load_dataset("HuggingFaceFW/fineweb-edu", name="CC-MAIN-2024-10", split="train", streaming=True)
+            prompts = []
+            count = 0
+            for example in valid_text:
+                count += 1
+                if count > 50:
+                    break
+                prompts.append(example['text'])
             og_model = model
 
             # for safetensors
             print (root + dir)
             # load_model(model, root + dir + '/model.safetensors')
-            load_model(model, '/home/bbadger/Desktop/tinystories/tinystories_llama_512_h4/checkpoint-188000/model.safetensors')
+            load_model(model, '/home/bbadger/Desktop/model.safetensors')
             print ('model_loaded')
 
             tokenizer.pad_token = tokenizer.eos_token
@@ -188,16 +197,17 @@ if __name__ == "__main__":
                       truncation=True,
                       padding='max_length', 
                       max_length=tokenized_length,
+                      padding_side='right'
                       ).to(device)
 
                 
                 a_model = AbbreviatedModel(model).to(device)
                 embedding = og_model.model.embed_tokens(tokens)
                 shifted_embedding = embedding + 0.05*torch.randn(embedding.shape).to(device)
-                # print (f'Shifted embedding distance: {torch.sum(torch.abs(embedding - shifted_embedding))}')
+                print (f'Shifted embedding distance: {torch.sum(torch.abs(embedding - shifted_embedding))}')
                 embedding_weight = og_model.model.embed_tokens.weight.float() # convert to float in case model is in 16-bit precision
                 inverse_embedding = torch.linalg.pinv(embedding_weight.cpu()).to(device)
-                # print ('inverse embedding computed')
+                print ('inverse embedding computed')
                 logits = torch.matmul(shifted_embedding.float(), inverse_embedding.float()) # invert embedding transformations
                 tokens = torch.argmax(logits, dim=2)[0]
                 output = tokenizer.decode(tokens)
@@ -206,15 +216,13 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     shifted_target_tensor = a_model(shifted_embedding.to(device)).to(device)
                     target_tensor = a_model(embedding).to(device)
-                # print (f'Shifted output distance: {torch.sum(torch.abs(shifted_target_tensor - target_tensor))}')
+                print (f'Shifted output distance: {torch.sum(torch.abs(shifted_target_tensor - target_tensor))}')
 
                 embedding = embedding.detach()
                 generated_input = generate_singleinput(a_model, target_tensor)
                 g_input = generated_input
-
                 generated_target_tensor = a_model(g_input).to(device)
-                # print (f'Generated output distance: {torch.sum(torch.abs(generated_target_tensor - target_tensor))}')
-
+                print (f'Generated output distance: {torch.sum(torch.abs(generated_target_tensor - target_tensor))}')                                                  
                 logits = torch.matmul(generated_input, inverse_embedding)
                 topk_k = 5
                 generated_tokens = torch.topk(logits, topk_k)[1][0] # indicies of topk of tensor [length, topk_tokens]\
@@ -232,5 +240,6 @@ if __name__ == "__main__":
             hammings.append(hamming_metrics)
 
             print (f'Hamming metrics for dim {d}: ', hamming_metrics)
+            break
         print (hammings)
 
