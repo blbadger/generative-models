@@ -131,9 +131,9 @@ def infoNCEloss(output, matching_index=None):
 	the rest are negative samples.
 
 	"""
-	summary_embedding = output[0, :, -1] # b t e shape
-	match_embedding = output[matching_index, :, -1]
-	nonmatch_embeddings = torch.cat((output[1:matching_index, :, -1], output[matching_index+1:, :, -1]), dim=0)
+	summary_embedding = output[0, -1, :] # b t e shape
+	match_embedding = output[matching_index, -1, :]
+	nonmatch_embeddings = torch.cat((output[1:matching_index, -1, :], output[matching_index+1:, -1, :]), dim=0)
 	cosine_sim = torch.nn.CosineSimilarity(dim=1)
 	temp = 0.01
 	codists = torch.exp(cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
@@ -182,7 +182,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 #initialize retrieval model
 retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
-load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
+load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-56000/model.safetensors')
 
 llama_config_kwargs = {
 	'hidden_size': dim,
@@ -199,7 +199,7 @@ llama_config_kwargs = {
 #retrieval_model = RetrievalTransformer(model).float()
 
 # print (retrieval_model)
-path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
+path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device=0) as f:
 	for k in f.keys():
