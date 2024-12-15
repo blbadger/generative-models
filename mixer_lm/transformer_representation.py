@@ -88,7 +88,7 @@ class AbbreviatedModel(nn.Module):
         # Matrix mult instead of embedding to prevent type incompatibility
         position_ids = torch.tensor([[i for i in range(x.shape[1])]]).to(device)
 
-        for i in range(16):
+        for i in range(len(self.model.model.layers)):
             x = self.model.model.layers[i](x, position_ids=position_ids)[0]
 
         return x
@@ -134,7 +134,7 @@ if __name__ == "__main__":
         sorted_dirs = sorted(os.listdir(root))[:-1] # remove 'llama.py'
         sorted_dirs.sort(key=lambda dir: int(dir[11:]))
         for dir in sorted_dirs:
-            tokenized_length = 512
+            tokenized_length = 128
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             dim = d
             llama_config_kwargs = {

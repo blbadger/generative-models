@@ -185,7 +185,7 @@ retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
 load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
 
 llama_config_kwargs = {
-	'hidden_size': dim,
+	'hidden_size': dim,	
 	'intermediate_size': 4*dim,
 	'num_hidden_layers': 16,
 	'num_attention_heads': 4,
