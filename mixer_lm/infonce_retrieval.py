@@ -125,15 +125,15 @@ class RetrievalTransformer(nn.Module):
 		loss = infoNCEloss(model_output, matching_index=matching_index)
 		return loss, model_output
 
-def infoNCEloss(output, matching_index=None):
+def infoNCEloss(output, matching_index=None, embedding_index=-2):
 	"""
 	Implements Noise-Contrastive Loss. Assumes that there is one positive pair per batch and all 
 	the rest are negative samples.
 
 	"""
-	summary_embedding = output[0, -1, :] # b t e shape
-	match_embedding = output[matching_index, -1, :]
-	nonmatch_embeddings = torch.cat((output[1:matching_index, -1, :], output[matching_index+1:, -1, :]), dim=0)
+	summary_embedding = output[0, embedding_index, :] # b t e shape
+	match_embedding = output[matching_index, embedding_index, :]
+	nonmatch_embeddings = torch.cat((output[1:matching_index, embedding_index, :], output[matching_index+1:, embedding_index, :]), dim=0)
 	cosine_sim = torch.nn.CosineSimilarity(dim=1)
 	temp = 0.01
 	codists = torch.exp(cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
@@ -221,7 +221,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_mixer_512_b32',
+	output_dir='~/Desktop/contrastive_mixer_512_b32_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
