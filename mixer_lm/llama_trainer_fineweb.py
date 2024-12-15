@@ -4,7 +4,6 @@ import einops
 from einops import rearrange
 import transformers
 from transformers import PreTrainedTokenizerFast
-from transformers import TextDataset, Trainer, TrainingArguments
 from transformers import TextDataset, Trainer, TrainingArguments, AutoModelWithLMHead, DataCollatorForLanguageModeling
 import torch.nn as nn
 import mlflow
@@ -83,8 +82,8 @@ def tokenization(example):
 		)
     return tokens
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-left"
 
 def map_dataset(train_path, test_path, split_index=50000):
 	"""
@@ -195,7 +194,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_llama_512_n16_h8_c512',
+	output_dir='~/Desktop/fineweb_llama_512_n16_h4_c512_lpad',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000
@@ -210,5 +209,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-#trainer.train() 
-trainer.train('/home/bbadger/Desktop/fineweb_llama_512_n16_h8_c512/checkpoint-112000')
+trainer.train() 
+#trainer.train('/home/bbadger/Desktop/fineweb_llama_512_n16_h8_c512/checkpoint-112000')
