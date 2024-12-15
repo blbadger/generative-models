@@ -328,5 +328,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-trainer.train()
-#trainer.train('/home/bbadger/Desktop/fineweb_mixer_1024_n16_b32_c1024/checkpoint-60000')
+#trainer.train()
+trainer.train('/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-56000')

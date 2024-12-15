@@ -114,7 +114,7 @@ class RetrievalTransformer(nn.Module):
 
 	def __init__(self, model, prebatched=True):
 		super().__init__()
-		self.model = model
+		self.model = model.model # no lm head
 		self.prebatched = prebatched
 
 	def forward(self, input_ids, matching_index, *kwargs):
@@ -182,7 +182,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 #initialize retrieval model
 retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
-load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-56000/model.safetensors')
+load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
 
 llama_config_kwargs = {
 	'hidden_size': dim,
