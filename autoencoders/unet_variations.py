@@ -69,7 +69,6 @@ class ImageDataset(Dataset):
             image = self.transform(image)
         if self.target_transform:
             label = self.target_transform(label)
-
         return image
 
 def npy_loader(path):
@@ -147,7 +146,7 @@ count_parameters(model)
 
 def load_model(model):
     model = model.to('cpu')
-    checkpoint = torch.load('/home/bbadger/Desktop/churches_unetdeepwide/epoch_290', map_location=torch.device('cpu'))
+    checkpoint = torch.load('/home/bbadger/Desktop/epoch_990', map_location=torch.device('cpu'))
     
     reformatted_checkpoint = OrderedDict()
     for key, value in checkpoint.items():
@@ -218,29 +217,25 @@ def train_autoencoder(model, dataset='churches'):
 
     dist.destroy_process_group()
  
-if __name__ == '__main__':
-    train_autoencoder(model, dataset='churches')
+# if __name__ == '__main__':
+#     train_autoencoder(model, dataset='churches')
 
 # batch = next(iter(dataloader)).cpu().permute(0, 2, 3, 1).detach().numpy()
 # model.load_state_dict(torch.load('/home/bbadger/Downloads/499'))
-checkpoint = torch.load('/home/bbadger/Desktop/499')
-reformatted_checkpoint = OrderedDict()
-for key, value in checkpoint.items():
-    reformatted_checkpoint[key[7:]] = value
-# del checkpoint
-model.load_state_dict(reformatted_checkpoint)
+# checkpoint = torch.load('/home/bbadger/Desktop/epoch_490')
+# reformatted_checkpoint = OrderedDict()
+# for key, value in checkpoint.items():
+#     reformatted_checkpoint[key[7:]] = value
+# # del checkpoint
+# model.load_state_dict(reformatted_checkpoint)
 # train_autoencoder(model, dataset='curches')
 model = model.to(device)
 
 # model.eval() switches batch norm from online statistics to saved: do not use for batchnormed-trained autoencoders
-# model.eval()
-
-
 path = pathlib.Path('/home/bbadger/Downloads/church_outdoor_train_lmdb_color_64.npy', fname='Combined')
 dataset = npy_loader(path)
 dset = torch.utils.data.TensorDataset(dataset)
 dataloader = torch.utils.data.DataLoader(dataset[:500], batch_size=batch_size, shuffle=True)
-
 
 @torch.no_grad()
 def observe_denoising(alpha):
@@ -282,7 +277,7 @@ def observe_denoising(alpha):
     print (f'L2 Distance on the Input after Gaussian Noise: {input_distance}')
     print (f'L2 Distance on the Autoencoder Output after Gaussian Noise: {output_distance}')
 
-alpha = 0.9
+alpha = 0.3
 observe_denoising(alpha)
 
 @torch.no_grad()
@@ -290,7 +285,7 @@ def generate_with_noise():
     batch = next(iter(dataloader))
     alpha = 0
     batch = alpha * batch + (1-alpha) * torch.normal(0.7, 0.2, batch.shape) # random initial input
-    for i in range(30):
+    for i in range(60):
         alpha = i / 20
         gen_images = model(batch.to(device))
         batch = alpha * gen_images + (1-alpha) * torch.normal(0.7, 0.2, batch.shape).to(device) 
