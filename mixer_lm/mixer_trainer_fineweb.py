@@ -259,14 +259,14 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 512
-dim = 512
+tokenized_length = 1024
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
 model = LanguageMixer(n_vocab, dim, 16).float()
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-left"
+train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c1024-8k"
+test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c1024-8k"
 
 def tokenization(example):
 	tokens = tokenizer.batch_encode_plus(
@@ -295,24 +295,24 @@ def map_dataset(train_path, test_path, split_index=50000):
 	return
 
 #map_dataset(train_path, test_path)
-datasets.config.IN_MEMORY_MAX_SIZE = 30e9
+datasets.config.IN_MEMORY_MAX_SIZE = 50e9
 train_dataset = load_from_disk(train_path, keep_in_memory=None)
 test_dataset = load_from_disk(test_path, keep_in_memory=None)
 print (len(train_dataset), len(test_dataset))
 mlflow.end_run()
 print ('training begun')
-
+print (train_dataset[0])
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=64,
-	per_device_eval_batch_size=64,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_mixer_512_n16_b64_c512_lpad',
+	output_dir='~/Desktop/finemath_mixer_1024_n16_c1024',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
@@ -329,4 +329,4 @@ trainer = transformers.Trainer(
 
 model.train()
 #trainer.train()
-trainer.train('/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-56000')
+trainer.train('/home/bbadger/Desktop/finemath_mixer_1024_n16_c1024/checkpoint-28000')

@@ -277,7 +277,7 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 12
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def generate_retrieval_dataset(query_embeddings, target_embeddings, n_context, multiples=1):
@@ -392,7 +392,7 @@ with safe_open(filepath, framework="pt", device='cpu') as f:
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
 target_test_embeddings = target_test_embeddings[:len(query_test_embeddings)] # if embedding sizes don't match
 
-second=False
+second=True
 if second:
 	filepath = '/home/bbadger/Desktop/fineweb_retrieval_200_400k.safetensors'
 	with safe_open(filepath, framework="pt", device='cpu') as f:
@@ -401,7 +401,7 @@ if second:
 		query_train_embeddings = torch.cat((query_train_embeddings, f.get_tensor('query_train')))
 		query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
 
-n_context = 32
+n_context = 128
 train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=True, pre_index=False)
 test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=True)
 print (len(target_test_embeddings), len(query_test_embeddings))
@@ -420,7 +420,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_retrieval_mixer_512_n8_200k_c32',
+	output_dir='~/Desktop/fineweb_retrieval_mixer_512_n8_400k_c128',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
