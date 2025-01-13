@@ -134,7 +134,7 @@ if __name__ == "__main__":
         sorted_dirs = sorted(os.listdir(root))[:-1] # remove 'llama.py'
         sorted_dirs.sort(key=lambda dir: int(dir[11:]))
         for dir in sorted_dirs:
-            tokenized_length = 128
+            tokenized_length = 1024
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             dim = d
             llama_config_kwargs = {
