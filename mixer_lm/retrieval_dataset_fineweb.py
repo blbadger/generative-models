@@ -213,7 +213,7 @@ test_data = data[split+offset:end+offset]['input_ids']
 n_vocab = len(tokenizer)
 
 mix = True
-if mixer:
+if mix:
 	# generative model initialization
 	tokenized_length = 512
 	dim = 512

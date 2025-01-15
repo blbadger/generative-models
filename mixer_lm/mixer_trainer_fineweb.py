@@ -215,7 +215,7 @@ class LanguageMixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = tokenized_length,
-				expand_conv=False
+				expand_conv=True
 				)
 			for i in range(depth)]
 			).to(device)
@@ -264,7 +264,7 @@ dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
 model = LanguageMixer(n_vocab, dim, 16).float()
-
+count_parameters(model)
 train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c1024-8k"
 test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c1024-8k"
 
@@ -308,11 +308,11 @@ training_arguments = transformers.TrainingArguments(
 	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
-	save_steps=4000,
+	save_steps=8000,
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/finemath_mixer_1024_n16_c1024',
+	output_dir='~/Desktop/finemath_mixer_1024_n16_e1',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
@@ -328,5 +328,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-#trainer.train()
-trainer.train('/home/bbadger/Desktop/finemath_mixer_1024_n16_c1024/checkpoint-28000')
+trainer.train()
+#trainer.train('/home/bbadger/Desktop/finemath_mixer_1024_n16_c1024/checkpoint-148000')
