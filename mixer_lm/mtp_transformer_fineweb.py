@@ -23,11 +23,11 @@ device = 0 if torch.cuda.is_available else 'cpu'
 dim = 512
 context_length = 1024
 llama_config_kwargs = {
-    'hidden_size': dim,
-    'intermediate_size': 4*dim,
-    'num_hidden_layers': 16,
-    'num_attention_heads': 4,
-    'vocab_size': 8000
+	'hidden_size': dim,
+	'intermediate_size': 4*dim,
+	'num_hidden_layers': 16,
+	'num_attention_heads': 4,
+	'vocab_size': 8000
 }
 
 # Initializing a LLaMA model
@@ -38,21 +38,21 @@ model = LlamaForCausalLM(configuration).float()
 
 class MTPTransformer(nn.Module):
 
-    def __init__(self, model, n_tokens):
-        super().__init__()
-        self.model = model
-        self.n_tokens = 2
+	def __init__(self, model, n_tokens):
+		super().__init__()
+		self.model = model
+		self.n_tokens = 2
 
-    def forward(self, x: torch.Tensor, labels=None, **kwargs):
-    	loss = torch.tensor([0], requires_grad=True)
-        for i in range(n_tokens):
-        	output = self.lm_head(self.model(x)[0])
+	def forward(self, x: torch.Tensor, labels=None, **kwargs):
+		loss = torch.tensor([0], requires_grad=True)
+		for i in range(n_tokens):
+			output = self.lm_head(self.model(x)[0])
 			shift_logits = output[..., :-(1 + i)].contiguous()
 			shift_labels = labels[..., (1 + i):].contiguous()
 			loss += self.cel(shift_logits, shift_labels)
 			x = torch.argmax(model_output, dim=-2)
 
-        return output, loss
+		return output, loss
 
 
 model = MTPTransformer(model)
