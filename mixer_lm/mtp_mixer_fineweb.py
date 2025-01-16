@@ -153,8 +153,6 @@ class LanguageMixer(nn.Module):
 		for i in range(self.n_passes-1):
 			# assign tokens
 			x = torch.argmax(output, dim=-2)
-			# shift labels
-			labels = labels[..., 1:].contiguous()
 
 			x = self.wte(x)
 			for i, block in enumerate(self.mixerblocks):
@@ -163,8 +161,8 @@ class LanguageMixer(nn.Module):
 			if labels.dim() > 2:
 				labels = rearrange(labels, 'b p t -> b (p t)')
 			output = rearrange(output, 'b t e -> b e t')
-			shift_logits = output[..., :-(1 + i)].contiguous()
-			shift_labels = labels[..., 1:].contiguous()
+			shift_logits = output[..., :-(2 + i)].contiguous()
+			shift_labels = labels[..., (2 + i):].contiguous()
 			loss += self.cel(shift_logits, shift_labels)
 
 		return loss, output
@@ -233,15 +231,15 @@ print ('training begun')
 print (train_dataset[0])
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=16,
-	per_device_eval_batch_size=16,
+	per_device_train_batch_size=8,
+	per_device_eval_batch_size=8,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/finemath_mixer_1024_n16_e1',
+	output_dir='~/Desktop/mtp_finemath_mixer_1024_n16',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
