@@ -38,24 +38,29 @@ model = LlamaForCausalLM(configuration).float()
 
 class MTPTransformer(nn.Module):
 
-	def __init__(self, model, n_tokens):
+	def __init__(self, model, n_tokens=2):
 		super().__init__()
 		self.model = model
-		self.n_tokens = 2
+		self.n_tokens = n_tokens
+		self.cel = torch.nn.CrossEntropyLoss()
 
-	def forward(self, x: torch.Tensor, labels=None, **kwargs):
-		loss = torch.tensor([0], requires_grad=True)
-		for i in range(n_tokens):
-			output = self.lm_head(self.model(x)[0])
+	def forward(self, input_ids, labels=None, **kwargs):
+		x = input_ids
+		for i in range(self.n_tokens):
+			output = self.model.lm_head(self.model.model(x)[0])
+			output = rearrange(output, 'b t e -> b e t')
 			shift_logits = output[..., :-(1 + i)].contiguous()
 			shift_labels = labels[..., (1 + i):].contiguous()
-			loss += self.cel(shift_logits, shift_labels)
-			x = torch.argmax(model_output, dim=-2)
+			if 'loss' in vars():
+				loss += self.cel(shift_logits, shift_labels)
+			else:
+				loss = self.cel(shift_logits, shift_labels)
+			x = torch.argmax(output, dim=-2)
 
-		return output, loss
+		return loss, output
 
 
-model = MTPTransformer(model)
+model = MTPTransformer(model, n_tokens=2)
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
@@ -97,5 +102,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-#trainer.train() 
-trainer.train('/home/bbadger/Desktop/finemath_llama_n16_h4_c1024/checkpoint-60000')
+trainer.train() 
+#trainer.train('/home/bbadger/Desktop/finemath_llama_n16_h4_c1024/checkpoint-60000')

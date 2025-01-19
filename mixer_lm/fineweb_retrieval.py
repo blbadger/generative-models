@@ -344,7 +344,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 			indices = self.indices[idx]
 		else:
 			indices = torch.multinomial(self.prob_weights, self.n_context-1, replacement=self.replace)
-			# indices = np.random.multinomial(self.n_context-1, self.prob_weights) 
+			#indices = np.random.choice(len(self.prob_weights), self.n_context-1, replace=self.replace, p=self.prob_weights/torch.sum(self.prob_weights)) 
 		self.prob_weights[idx] = 1
 		input[1:] = self.target_embeddings[indices]
 
@@ -394,7 +394,7 @@ target_test_embeddings = target_test_embeddings[:len(query_test_embeddings)] # i
 
 second=True
 if second:
-	filepath = '/home/bbadger/Desktop/fineweb_retrieval_200_400k.safetensors'
+	filepath = '/home/bbadger/Desktop/fineweb_mixer_512_retrieval_200_400k.safetensors'
 	with safe_open(filepath, framework="pt", device='cpu') as f:
 		target_train_embeddings = torch.cat((target_train_embeddings, f.get_tensor('target_train')))
 		target_test_embeddings = torch.cat((target_test_embeddings, f.get_tensor('target_test')))
@@ -402,8 +402,8 @@ if second:
 		query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
 
 n_context = 128
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=True, pre_index=False)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=True)
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=False, pre_index=False)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=False)
 print (len(target_test_embeddings), len(query_test_embeddings))
 
 # initialize retrieval model
