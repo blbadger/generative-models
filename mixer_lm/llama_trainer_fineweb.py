@@ -20,13 +20,13 @@ import datasets
 
 device = 0 if torch.cuda.is_available else 'cpu'
 
-dim = 512 
-context_length = 512
+dim = 512
+context_length = 1024
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
     'num_hidden_layers': 16,
-    'num_attention_heads': 8,
+    'num_attention_heads': 4,
     'vocab_size': 8000
 }
 
@@ -82,8 +82,8 @@ def tokenization(example):
 		)
     return tokens
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-left"
+train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c1024-8k"
+test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c1024-8k"
 
 def map_dataset(train_path, test_path, split_index=50000):
 	"""
@@ -186,15 +186,15 @@ def reformat_inputs(train_data, test_data):
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_llama_512_n16_h4_c512_lpad',
+	output_dir='~/Desktop/finemath_llama_n16_h4_c1024',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000
@@ -209,5 +209,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-trainer.train() 
-#trainer.train('/home/bbadger/Desktop/fineweb_llama_512_n16_h8_c512/checkpoint-112000')
+#trainer.train() 
+trainer.train('/home/bbadger/Desktop/finemath_llama_n16_h4_c1024/checkpoint-60000')

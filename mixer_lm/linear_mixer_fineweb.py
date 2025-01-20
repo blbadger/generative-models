@@ -66,7 +66,9 @@ class MixerBlock(nn.Module):
 			masked_conv = torch.tril(rearrange(self.conv.weight, 'f d p -> p f d'))
 			self.conv.weight.data = rearrange(masked_conv, 'p f d -> f d p').contiguous()
 
+		#residual = x
 		x = self.conv(x)
+		#x = self.patch_ff(x)
 		return x
 
 class LanguageMixer(nn.Module):
@@ -78,7 +80,7 @@ class LanguageMixer(nn.Module):
 			[MixerBlock(
 				dim = dim,
 				length = tokenized_length,
-				expand_conv=True
+				expand_conv=False
 				)
 			for i in range(depth)]
 			).to(device)
@@ -123,7 +125,7 @@ n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
 tokenized_length = 128
-dim = 8192
+dim = 10240
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 1).float()
 
@@ -145,10 +147,10 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
-	learning_rate=5e-4,
+	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_mixer_nearlin_8192_16k_c128',
+	output_dir='~/Desktop/fineweb_mixer_lin1_10240_16k_c128',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,

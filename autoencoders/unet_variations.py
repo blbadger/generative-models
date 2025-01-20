@@ -58,7 +58,7 @@ class ImageDataset(Dataset):
         img_path = os.path.join(self.image_name_ls[index])
         image = torchvision.io.read_image(img_path, torchvision.io.ImageReadMode.RGB) # convert image to tensor of ints, torchvision.io.ImageReadMode.GRAY
         image = image / 255. # convert ints to floats in range [0, 1]
-        image = torchvision.transforms.CenterCrop([728, 728])(image)
+        #image = torchvision.transforms.CenterCrop([728, 728])(image)
         image = torchvision.transforms.Resize([128, 128])(image)
         # image = torchvision.transforms.RandomHorizontalFlip(p=0.5)(image)
 
@@ -69,7 +69,6 @@ class ImageDataset(Dataset):
             image = self.transform(image)
         if self.target_transform:
             label = self.target_transform(label)
-
         return image
 
 def npy_loader(path):
@@ -117,8 +116,8 @@ def show_batch(input_batch, count=0, grayscale=False, normalize=True, tag=None):
     plt.close()
     return
   
-batch_size = 64
-image_size = 64
+batch_size = 32
+image_size = 128
 channels = 3
 
 # model = UNet(3, 3)
@@ -139,6 +138,7 @@ def count_parameters(model):
 
 # model = UNetWide(3, 3).to(device)
 model = UNetDeepWide(3, 3)
+model_dtype = torch.float32
 # model = UNetWideHidden(3, 3).to(device)
 loss_fn = torch.nn.MSELoss(reduction='none')
 # loss_fn = torch.nn.BCELoss()
@@ -147,8 +147,7 @@ count_parameters(model)
 
 def load_model(model):
     model = model.to('cpu')
-    checkpoint = torch.load('/home/bbadger/Desktop/churches_unetdeepwide/epoch_290', map_location=torch.device('cpu'))
-    
+    checkpoint = torch.load('/home/bbadger/Desktop/churches_unetdeepwide/epoch_490', map_location=torch.device('cpu'))
     reformatted_checkpoint = OrderedDict()
     for key, value in checkpoint.items():
         reformatted_checkpoint[key[7:]] = value
@@ -156,11 +155,10 @@ def load_model(model):
     del checkpoint
     return model.to("cpu")
 
-model = load_model(model)
+#model = load_model(model)
 print ('model_loaded')
 
-def train_autoencoder(model, dataset='churches'):
-    epochs = 500
+def train_autoencoder(model, dataset='churches', epochs=5000):
     alpha = 1
     gpu_count = torch.cuda.device_count()
     dist.init_process_group("nccl")
@@ -182,13 +180,13 @@ def train_autoencoder(model, dataset='churches'):
 
     # create model and move it to GPU with id rank
     device_id = rank % torch.cuda.device_count()
-    model = model.to(device_id)
+    model = model.to(device_id, dtype=model_dtype)
     ddp_model = DDP(model, device_ids=[device_id])
 
     optimizer = Adam(ddp_model.parameters(), lr=1e-4)
     ddp_model.train()
 
-    for epoch in tqdm(range(290, epochs)):
+    for epoch in tqdm(range(epochs)):
         start_time = time.time()
         total_loss = 0
         total_mse_loss = 0
@@ -197,20 +195,21 @@ def train_autoencoder(model, dataset='churches'):
             if len(batch) < batch_size:
                 break 
             optimizer.zero_grad()
-            batch = batch.to(device_id) # discard class labels
+            batch = batch.to(device_id, dtype=model_dtype) # discard class labels
             output = ddp_model(batch) 
   #          output = torch.clip(output, min=0, max=1)
             loss = loss_fn(output, batch)
-            loss = torch.masked_select(loss, loss > 0.01)
-            loss_size = loss.shape
-            loss = torch.mean(loss)
+            #loss = torch.masked_select(loss, loss > 0.01)
+            loss_size = loss.shape,
+            loss = torch.mean(loss) # torch.mean(loss)
             total_loss += loss.item()
+            #print (loss.item())
             loss.backward()
             optimizer.step()
 
         if rank == 0:
-            checkpoint_path = f'/home/bbadger/Desktop/churches_unetdeepwide/epoch_{epoch}'
-            if epoch % 10 == 0: torch.save(ddp_model.state_dict(), checkpoint_path)
+            checkpoint_path = f'/home/bbadger/Desktop/landscapes_unetwidedeep/epoch_{epoch}'
+            if epoch % 100 == 0: torch.save(ddp_model.state_dict(), checkpoint_path)
             tqdm.write(f"Epoch {epoch} completed in {time.time() - start_time} seconds")
             tqdm.write(f"Average Loss: {round(total_loss / step, 5)}")
             tqdm.write(f"Loss shape: {loss_size}")
@@ -219,28 +218,23 @@ def train_autoencoder(model, dataset='churches'):
     dist.destroy_process_group()
  
 if __name__ == '__main__':
-    train_autoencoder(model, dataset='churches')
-
+    train_autoencoder(model, dataset='landscapes')
 # batch = next(iter(dataloader)).cpu().permute(0, 2, 3, 1).detach().numpy()
 # model.load_state_dict(torch.load('/home/bbadger/Downloads/499'))
-checkpoint = torch.load('/home/bbadger/Desktop/499')
-reformatted_checkpoint = OrderedDict()
-for key, value in checkpoint.items():
-    reformatted_checkpoint[key[7:]] = value
-# del checkpoint
-model.load_state_dict(reformatted_checkpoint)
+# checkpoint = torch.load('/home/bbadger/Desktop/epoch_490')
+# reformatted_checkpoint = OrderedDict()
+# for key, value in checkpoint.items():
+#     reformatted_checkpoint[key[7:]] = value
+# # del checkpoint
+# model.load_state_dict(reformatted_checkpoint)
 # train_autoencoder(model, dataset='curches')
 model = model.to(device)
 
 # model.eval() switches batch norm from online statistics to saved: do not use for batchnormed-trained autoencoders
-# model.eval()
-
-
 path = pathlib.Path('/home/bbadger/Downloads/church_outdoor_train_lmdb_color_64.npy', fname='Combined')
 dataset = npy_loader(path)
 dset = torch.utils.data.TensorDataset(dataset)
 dataloader = torch.utils.data.DataLoader(dataset[:500], batch_size=batch_size, shuffle=True)
-
 
 @torch.no_grad()
 def observe_denoising(alpha):
@@ -282,7 +276,7 @@ def observe_denoising(alpha):
     print (f'L2 Distance on the Input after Gaussian Noise: {input_distance}')
     print (f'L2 Distance on the Autoencoder Output after Gaussian Noise: {output_distance}')
 
-alpha = 0.9
+alpha = 0.3
 observe_denoising(alpha)
 
 @torch.no_grad()
@@ -290,7 +284,7 @@ def generate_with_noise():
     batch = next(iter(dataloader))
     alpha = 0
     batch = alpha * batch + (1-alpha) * torch.normal(0.7, 0.2, batch.shape) # random initial input
-    for i in range(30):
+    for i in range(60):
         alpha = i / 20
         gen_images = model(batch.to(device))
         batch = alpha * gen_images + (1-alpha) * torch.normal(0.7, 0.2, batch.shape).to(device) 

@@ -25,6 +25,8 @@ import random
 from datasets import Dataset, load_from_disk
 from safetensors.torch import save_file
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
 	return nn.Sequential(
@@ -209,49 +211,53 @@ offset = 0
 train_data = data[start+offset:split+offset]['input_ids']
 test_data = data[split+offset:end+offset]['input_ids']
 n_vocab = len(tokenizer)
-# generative model initialization
-tokenized_length = 512
-dim = 512
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-#gen_model = LanguageMixer(n_vocab, dim, 16).float().to(device)
-#load_model(gen_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
-#gen_model.eval()
 
-# generative model initialization
-dim = 512
-llama_config_kwargs = {
-    'hidden_size': dim,
-    'intermediate_size': 4*dim,
-    'num_hidden_layers': 16,
-    'num_attention_heads': 32,
-    'vocab_size': 8000
-}
+mix = True
+if mix:
+	# generative model initialization
+	tokenized_length = 512
+	dim = 512
+	gen_model = LanguageMixer(n_vocab, dim, 16).float().to(device)
+	load_model(gen_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64/checkpoint-200000/model.safetensors')
+	gen_model.eval()
+	embedder = embed_input
 
-# Initializing a LLaMA model
-configuration = LlamaConfig(**llama_config_kwargs)
+else:
+	dim = 512
+	llama_config_kwargs = {
+	    'hidden_size': dim,
+	    'intermediate_size': 4*dim,
+	    'num_hidden_layers': 16,
+	    'num_attention_heads': 32,
+	    'vocab_size': 8000
+	}
 
-# Initializing a model from the llama-7b style configuration
-gen_model = LlamaForCausalLM(configuration).to(device)
-load_model(gen_model, '/home/bbadger/Desktop/fineweb_llama_512_n16_h32_c512/checkpoint-200000/model.safetensors')
-gen_model.eval()
+	# Initializing a LLaMA model
+	configuration = LlamaConfig(**llama_config_kwargs)
 
-target_train = trans_embed_input(train_data)
-target_test = trans_embed_input(test_data)
+	# Initializing a model from the llama-7b style configuration
+	gen_model = LlamaForCausalLM(configuration).to(device)
+	load_model(gen_model, '/home/bbadger/Desktop/fineweb_llama_512_n16_h32_c512/checkpoint-200000/model.safetensors')
+	gen_model.eval()
+	embedder = trans_embed_input
+
+target_train = embedder(train_data)
+target_test = embedder(test_data)
 print ('Inputs embedded')
-
-query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_0_50000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_50000_100000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_100000_150000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_150000_200000.json'))]
+query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_200000_250000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_250000_300000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_300000_350000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_350000_400000.json'))]
 print ('query text length', len(query_text), query_text[0])
 query_train_data = batch_tokenize_input(query_text, start=start, end=split)
 query_test_data = batch_tokenize_input(query_text, start=split, end=end)
 print (len(query_train_data))
 
-query_train, query_test = trans_embed_input(query_train_data), trans_embed_input(query_test_data)
+query_train = embedder(query_train_data)
+query_test = embedder(query_test_data)
 print ('Queries embedded')
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/fineweb_llama_h32_retrieval_200k.safetensors'
+filepath = '/home/bbadger/Desktop/fineweb_mixer_512_retrieval_200_400k.safetensors'
 save_file(dictionary, filepath)
 print ('Safetensors file saved')
 
