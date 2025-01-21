@@ -401,7 +401,7 @@ if second:
 		query_train_embeddings = torch.cat((query_train_embeddings, f.get_tensor('query_train')))
 		query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
 
-n_context = 128
+n_context = 1024
 train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=False, pre_index=False)
 test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=False)
 print (len(target_test_embeddings), len(query_test_embeddings))
@@ -412,15 +412,15 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=200,
-	per_device_train_batch_size=128,
-	per_device_eval_batch_size=128,
+	per_device_train_batch_size=64,
+	per_device_eval_batch_size=64,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=1e-4,
 	fp16=True,
-	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_retrieval_mixer_512_n8_400k_c128',
+	evaluation_strategy='steps', 
+	output_dir='~/Desktop/fineweb_retrieval_mixer_512_n8_200k_c1024',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -434,4 +434,9 @@ trainer = transformers.Trainer(
 )
 
 retrieval_model.train()
-trainer.train()
+#trainer.train()
+trainer.train('/home/bbadger/Desktop/fineweb_retrieval_mixer_512_n8_200k_c1024/checkpoint-16000')
+
+
+
+
