@@ -102,5 +102,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-trainer.train() 
-#trainer.train('/home/bbadger/Desktop/finemath_llama_n16_h4_c1024/checkpoint-60000')
+#trainer.train() 
+trainer.train('/home/bbadger/Desktop/mtp_finemath_llama_512_n16_c32/checkpoint-16000')
