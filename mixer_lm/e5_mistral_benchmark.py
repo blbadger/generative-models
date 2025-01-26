@@ -10,47 +10,26 @@ from safetensors.torch import load_model
 from transformers import LlamaModel, LlamaConfig, LlamaForCausalLM
 
 bnb_config = BitsAndBytesConfig(
-load_in_4bit=True,
-bnb_4bit_use_double_quant=True,
-bnb_4bit_quant_type="nf4",
-bnb_4bit_compute_dtype=torch.float16
+	load_in_4bit=True,
+	bnb_4bit_use_double_quant=True,
+	bnb_4bit_quant_type="nf4",
+	bnb_4bit_compute_dtype=torch.float16
 )
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-#tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct")
-#model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", device_map='auto')
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct")
+model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", quantization_config=bnb_config, device_map='auto')
 reverse_tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
-tokenizer.pad_token = '<|end_of_text|>'
-dim = 512
-context_length = 512
-llama_config_kwargs = {
-    'hidden_size': dim,
-    'intermediate_size': 4*dim,
-    'num_hidden_layers': 16,
-    'num_attention_heads': 4,
-    'vocab_size': 8000
-}
-
-# Initializing a LLaMA model
-configuration = LlamaConfig(**llama_config_kwargs)
-
-# Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float().to(device)
-load_model(model, "/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors")
 def generate_sample(query_dataset, target_dataset, index, dataset_size=20000, start_index=180000, n_context=128, replace=False):
 	prob_weights = torch.ones(dataset_size)
 	input = [query_dataset[index]]
-	#print (reverse_tokenizer.decode(target_dataset[index]['input_ids']))
-	#print (input)
 	prob_weights[index-start_index] = 0
 	indices = torch.multinomial(prob_weights, n_context-1, replacement=replace)
 	for i in indices:
 		target_text = reverse_tokenizer.decode(target_dataset[int(i)]['input_ids'])
-		#print (target_text)
 		input.append(str(target_text))
 	target_index = random.randint(1, n_context-1) # random index to put target embedding
-	#print (target_index, index, len(input))
 	input[target_index] = reverse_tokenizer.decode(target_dataset[int(index)]['input_ids'])
 	return input, target_index
 
@@ -70,7 +49,6 @@ def get_detailed_instruct(task_description: str, query: str) -> str:
 	return f'Instruct: {task_description}\nQuery: {query}'
 
 
-
 total_correct = 0
 total = 0
 # Each query must come with a one-sentence instruction that describes the task
@@ -82,10 +60,10 @@ query_dataset += [i['choices'][0]['message']['content'] for i in json.load(open(
 	
 for i in range(180000, 200000):
 	# Each query must come with a one-sentence instruction that describes the task
-	n_samples = 32
+	n_samples = 128
 	task = 'Given a summary of a passage, find the corresponding text.'
 	queries = [
-		get_detailed_instruct(task, query_dataset[i]),
+		get_detailed_instruct(task, query_dataset[i])
 	]
 	# No need to add instruction for retrieval documents
 	samples, target_index = generate_sample(query_dataset, target_dataset, i, n_context=n_samples)
@@ -97,7 +75,6 @@ for i in range(180000, 200000):
 	batch_dict = tokenizer.encode(samples, max_length=max_length, padding=True, truncation=True, return_tensors='pt').to(device)
 	with torch.no_grad():
 		outputs = model(**batch_dict)
-		print('output given')
 		embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
 
 		# normalize embeddings
