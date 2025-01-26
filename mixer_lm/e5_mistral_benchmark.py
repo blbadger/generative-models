@@ -72,7 +72,7 @@ for i in range(180000, 200000):
 	samples[0] = query_dataset[i]
 	max_length = 512
 	# Tokenize the input texts
-	batch_dict = tokenizer.encode(samples, max_length=max_length, padding=True, truncation=True, return_tensors='pt').to(device)
+	batch_dict = tokenizer(samples, max_length=max_length, padding=True, truncation=True, return_tensors='pt').to(device)
 	with torch.no_grad():
 		outputs = model(**batch_dict)
 		embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
