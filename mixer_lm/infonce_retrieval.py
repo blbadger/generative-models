@@ -100,6 +100,7 @@ class LanguageMixer(nn.Module):
 	def forward(self, input_ids, matching_index, **kwargs):
 		x = input_ids
 		#print (input_ids[0][1], matching_index)
+		print (matching_index)
 		if self.prebatched_input:
 			x = x.squeeze(0) # p b t -> b t
 		x = x.to(device)
@@ -166,7 +167,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		target_index = random.randint(1, self.batch_size-1) # random index to put target embedding
 		matching_target = self.text_tokens[idx] # target the query matches
 		input[target_index] = matching_target
-		labels = torch.tensor(target_index-1, dtype=torch.long)
+		labels = torch.tensor(target_index, dtype=torch.long)
 		retrieval_dict = {'input_ids': input.to(torch.long), 'matching_index': labels} # results in p b t shape upon load
 		return retrieval_dict
 
@@ -196,8 +197,10 @@ peft_config = LoraConfig(
 	target_modules=modules
 	)
 
-model = get_peft_model(retrieval_model, peft_config)
+# model = get_peft_model(retrieval_model, peft_config)
+
 print (model)
+
 #llama_config_kwargs = {
 #	'hidden_size': dim,	
 #	'intermediate_size': 4*dim,
