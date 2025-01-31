@@ -20,6 +20,8 @@ from datasets import Dataset, load_from_disk, load_dataset
 from tqdm import tqdm
 from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
 import threading
+from accelerate import accelerator
+
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -139,6 +141,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 	cosine_sim = torch.nn.CosineSimilarity(dim=1)
 	temp = 0.02
 	codists = torch.exp((1/temp)*cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
+#	print (matching_index, torch.topk(cosine_sim(summary_embedding, output[1:, embedding_index, :]), 1, dim=0).indices)
 	# nonmatching_cos = F.normalize(summary_embedding, p=2, dim=1) @ F.normalize(nonmatch_embeddings, p=2, dim=1).T
 	#nondists = torch.sum(torch.exp(nonmatching_cos), dim=0)
 	nondists = torch.sum(torch.exp((1/temp)*cosine_sim(summary_embedding, nonmatch_embeddings)))
@@ -148,7 +151,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, text_tokens, summary_tokens, batch_size=16, replace=False):
+	def __init__(self, text_tokens, summary_tokens, batch_size=64, replace=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
 		self.context_length = len(summary_tokens[0])
@@ -158,9 +161,6 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		self.batch_size = batch_size
 
 	def __getitem__(self, idx):
-		torch.manual_seed(local_rank)
-		torch.cuda.manual_seed(local_rank)
-		random.seed(local_rank)
 		input = torch.zeros((self.batch_size, self.context_length)) # b t shape
 		input[0] = self.summary_tokens[idx]
 		self.prob_weights[idx] = 0
@@ -194,13 +194,12 @@ dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = False
+use_mixer = True
 if use_mixer:
 	#initialize retrieval model
 	n_layers = 16
 	retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
 	print (retrieval_model)
-	print ('model loaded')
 
 	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
 	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
@@ -242,14 +241,13 @@ else:
 print (model)
 path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
 tokens = {}
-with safe_open(path, framework="pt", device=0) as f:
+with safe_open(path, framework="pt", device='cpu') as f:
 	for k in f.keys():
 		tokens[k] = f.get_tensor(k)
 
 split_index = 190000
 train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
 test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:])
-print ('training begun')
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
@@ -262,7 +260,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_transformer_512_b64_lora_penult',
+	output_dir='~/Desktop/contrastive_mixer_512_b64_lora_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -275,5 +273,4 @@ trainer = transformers.Trainer(
 	args=training_arguments
 )
 
-retrieval_model.train()
 trainer.train()
