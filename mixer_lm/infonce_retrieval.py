@@ -152,7 +152,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, text_tokens, summary_tokens, batch_size=128, replace=False):
+	def __init__(self, text_tokens, summary_tokens, batch_size=64, replace=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
 		self.context_length = len(summary_tokens[0])
@@ -201,9 +201,8 @@ if use_mixer:
 	n_layers = 16
 	retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
 	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-	modules = []
-	# modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
-	modules += [f'mixerblocks{i}.conv' for i in range(n_layers)]
+	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
+#	modules += [f'mixerblocks.{i}.conv' for i in range(n_layers)]
 
 	# with init_empty_weights():
 	# 	empty_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
