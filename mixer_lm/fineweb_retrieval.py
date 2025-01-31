@@ -400,10 +400,20 @@ if second:
 		target_test_embeddings = torch.cat((target_test_embeddings, f.get_tensor('target_test')))
 		query_train_embeddings = torch.cat((query_train_embeddings, f.get_tensor('query_train')))
 		query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
+third=True
+if third:
+        filepath = '/home/bbadger/Desktop/fineweb_mixer_512_retrieval_400_600k.safetensors'
+        with safe_open(filepath, framework="pt", device='cpu') as f:
+                target_train_embeddings = torch.cat((target_train_embeddings, f.get_tensor('target_train')))
+                target_test_embeddings = torch.cat((target_test_embeddings, f.get_tensor('target_test')))
+                query_train_embeddings = torch.cat((query_train_embeddings, f.get_tensor('query_train')))
+                query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
 
-n_context = 128
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=False, pre_index=False)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=False)
+	
+#print (tokenizer.decode(target_train_embeddings[201000]), tokenizer.decode(query_train_embeddings[201000]))
+n_context = 512
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=True, pre_index=False)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=True)
 print (len(target_test_embeddings), len(query_test_embeddings))
 
 # initialize retrieval model
@@ -419,8 +429,8 @@ training_arguments = transformers.TrainingArguments(
 	save_steps=4000,
 	learning_rate=1e-4,
 	fp16=True,
-	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_retrieval_mixer_512_n8_400k_c128',
+	evaluation_strategy='steps', 
+	output_dir='~/Desktop/fineweb_retrieval_mixer_512_n8_c512_600k_rep',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -435,3 +445,6 @@ trainer = transformers.Trainer(
 
 retrieval_model.train()
 trainer.train()
+#trainer.train('/home/bbadger/Desktop/fineweb_retrieval_mixer_512_n8_200k_c1024/checkpoint-16000')
+
+

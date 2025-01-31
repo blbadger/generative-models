@@ -207,7 +207,7 @@ path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
 data = load_from_disk(path)
 
 start, split, end = 0, 180000, 200000
-offset = 0
+offset = 400000
 train_data = data[start+offset:split+offset]['input_ids']
 test_data = data[split+offset:end+offset]['input_ids']
 n_vocab = len(tokenizer)
@@ -244,10 +244,10 @@ else:
 target_train = embedder(train_data)
 target_test = embedder(test_data)
 print ('Inputs embedded')
-query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_200000_250000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_250000_300000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_300000_350000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_350000_400000.json'))]
+query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_400000_450000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_450000_500000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_500000_550000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_550000_600000.json'))]
 print ('query text length', len(query_text), query_text[0])
 query_train_data = batch_tokenize_input(query_text, start=start, end=split)
 query_test_data = batch_tokenize_input(query_text, start=split, end=end)
@@ -257,7 +257,7 @@ query_train = embedder(query_train_data)
 query_test = embedder(query_test_data)
 print ('Queries embedded')
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/fineweb_mixer_512_retrieval_200_400k.safetensors'
+filepath = '/home/bbadger/Desktop/fineweb_mixer_512_retrieval_400_600k.safetensors'
 save_file(dictionary, filepath)
 print ('Safetensors file saved')
 

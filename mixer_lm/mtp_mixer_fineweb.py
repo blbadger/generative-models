@@ -150,19 +150,18 @@ class LanguageMixer(nn.Module):
 		shift_labels = labels[..., 1:].contiguous()
 		loss = self.cel(shift_logits, shift_labels)
 
-		for i in range(self.n_passes-1):
+		for p in range(self.n_passes-1):
 			# assign tokens
 			x = torch.argmax(output, dim=-2)
-
 			x = self.wte(x)
-			for i, block in enumerate(self.mixerblocks):
+			for _, block in enumerate(self.mixerblocks):
 				x = block(x)
 			output = self.lm_head(x)
 			if labels.dim() > 2:
 				labels = rearrange(labels, 'b p t -> b (p t)')
 			output = rearrange(output, 'b t e -> b e t')
-			shift_logits = output[..., :-(2 + i)].contiguous()
-			shift_labels = labels[..., (2 + i):].contiguous()
+			shift_logits = output[..., :-(2 + p)].contiguous()
+			shift_labels = labels[..., (2 + p):].contiguous()
 			loss += self.cel(shift_logits, shift_labels)
 
 		return loss, output
@@ -186,14 +185,14 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
-tokenized_length = 1024
+tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
 model = LanguageMixer(n_vocab, dim, 16).float()
 count_parameters(model)
-train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c1024-8k"
-test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c1024-8k"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 
 def tokenization(example):
 	tokens = tokenizer.batch_encode_plus(
@@ -231,15 +230,15 @@ print ('training begun')
 print (train_dataset[0])
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=8,
-	per_device_eval_batch_size=8,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/mtp_finemath_mixer_1024_n16',
+	output_dir='~/Desktop/mtp_fineweb_mixer_1024_n16_c512',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
