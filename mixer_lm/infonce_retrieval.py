@@ -152,7 +152,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, text_tokens, summary_tokens, batch_size=64, replace=False):
+	def __init__(self, text_tokens, summary_tokens, batch_size=128, replace=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
 		self.context_length = len(summary_tokens[0])
@@ -199,26 +199,27 @@ use_mixer = True
 if use_mixer:
 	#initialize retrieval model
 	n_layers = 16
-	# retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
-	# load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
+	retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
+	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+	modules = []
+	# modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
 	modules += [f'mixerblocks{i}.conv' for i in range(n_layers)]
 
-	with init_empty_weights():
-		empty_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
+	# with init_empty_weights():
+	# 	empty_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
 
-	bnb_quantization_config = BnbQuantizationConfig(
-	  load_in_4bit=True,
-	  bnb_4bit_compute_dtype=torch.float16,  
-	  bnb_4bit_use_double_quant=True,         
-	  bnb_4bit_quant_type="nf4"               
-	)
+	# bnb_quantization_config = BnbQuantizationConfig(
+	#   load_in_4bit=True,
+	#   bnb_4bit_compute_dtype=torch.float16,  
+	#   bnb_4bit_use_double_quant=True,         
+	#   bnb_4bit_quant_type="nf4"               
+	# )
 
-	retrieval_model = load_and_quantize_model(
-	  empty_model,
-	  weights_location='/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors',
-	  bnb_quantization_config=bnb_quantization_config,
-	)
+	# retrieval_model = load_and_quantize_model(
+	#   empty_model,
+	#   weights_location='/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors',
+	#   bnb_quantization_config=bnb_quantization_config,
+	# )
 
 	peft_config = LoraConfig(
 	#	init_lora_weights="olora",
@@ -277,9 +278,9 @@ training_arguments = transformers.TrainingArguments(
 	fp16=True,
 	evaluation_strategy='steps',
 	output_dir='~/Desktop/contrastive_mixer_512_b64_lora_penult',
-	optim='paged_adamw_8bit',
+	optim='adamw_torch',
 	overwrite_output_dir=True,
-	save_safetensors=True,
+	save_safetensors=True
 )
 
 trainer = transformers.Trainer(
