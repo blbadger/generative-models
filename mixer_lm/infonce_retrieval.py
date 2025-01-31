@@ -19,6 +19,7 @@ import random
 from datasets import Dataset, load_from_disk, load_dataset
 from tqdm import tqdm
 from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
+import threading
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -93,14 +94,13 @@ class LanguageMixer(nn.Module):
 				expand_conv=False
 				)
 			for i in range(depth)]
-			).to(device)
+			)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 
 
 	def forward(self, input_ids, matching_index, **kwargs):
 		x = input_ids
-		#print (input_ids[0][1], matching_index)
-		print (matching_index)
+		#print (input_ids[0, 2, :], matching_index)
 		if self.prebatched_input:
 			x = x.squeeze(0) # p b t -> b t
 		x = x.to(device)
@@ -158,6 +158,9 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		self.batch_size = batch_size
 
 	def __getitem__(self, idx):
+		torch.manual_seed(local_rank)
+		torch.cuda.manual_seed(local_rank)
+		random.seed(local_rank)
 		input = torch.zeros((self.batch_size, self.context_length)) # b t shape
 		input[0] = self.summary_tokens[idx]
 		self.prob_weights[idx] = 0
@@ -173,7 +176,14 @@ class RetrievalDataset(torch.utils.data.Dataset):
 
 	def __len__(self):
 		return len(self.summary_tokens)
-  
+
+# random inits different for each GPU
+local_rank = threading.get_ident() % 1231
+print (local_rank)
+torch.manual_seed(local_rank)
+random.seed(local_rank) 
+torch.cuda.manual_seed(local_rank)
+
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
@@ -186,18 +196,21 @@ n_context = tokenized_length
 #initialize retrieval model
 n_layers = 16
 retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
+print (retrieval_model)
+print ('model loaded')
+
 load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
 modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
 modules += [f'mixerblocks{i}.conv' for i in range(n_layers)]
 peft_config = LoraConfig(
 #	init_lora_weights="olora",
-	r=16, 
+	r=8, 
 	lora_alpha=32, 
 	lora_dropout=0.,
 	target_modules=modules
 	)
 
-# model = get_peft_model(retrieval_model, peft_config)
+model = get_peft_model(retrieval_model, peft_config)
 
 print (model)
 
@@ -238,14 +251,14 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_mixer_512_b32_lora_penult',
+	output_dir='~/Desktop/contrastive_mixer_512_b64_lora_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
 )
 
 trainer = transformers.Trainer(
-	model=retrieval_model,
+	model=model,
 	train_dataset=train_dataset,
 	eval_dataset=test_dataset,
 	args=training_arguments
