@@ -148,7 +148,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, text_tokens, summary_tokens, batch_size=64, replace=False):
+	def __init__(self, text_tokens, summary_tokens, batch_size=16, replace=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
 		self.context_length = len(summary_tokens[0])
@@ -169,6 +169,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		input[1:] = self.text_tokens[indices]
 		target_index = random.randint(1, self.batch_size-1) # random index to put target embedding
 		matching_target = self.text_tokens[idx] # target the query matches
+		#print (matching_target, self.summary_tokens[idx])
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index, dtype=torch.long)
 		retrieval_dict = {'input_ids': input.to(torch.long), 'matching_index': labels} # results in p b t shape upon load
@@ -239,7 +240,6 @@ else:
 	model = get_peft_model(retrieval_model, peft_config)
 
 print (model)
-
 path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device=0) as f:
@@ -262,7 +262,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_mixer_512_b64_lora_penult',
+	output_dir='~/Desktop/contrastive_transformer_512_b64_lora_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
