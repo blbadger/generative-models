@@ -18,6 +18,7 @@ import numpy as np
 import random
 from datasets import Dataset, load_from_disk, load_dataset
 from tqdm import tqdm
+from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -134,7 +135,6 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 	summary_embedding = output[0, embedding_index, :].unsqueeze(0) # b t e shape
 	match_embedding = output[matching_index, embedding_index, :]
 	nonmatch_embeddings = torch.cat((output[1:matching_index, embedding_index, :], output[matching_index+1:, embedding_index, :]), dim=0)
-#	print (summary_embedding.shape, match_embedding.shape, nonmatch_embeddings.shape)
 	cosine_sim = torch.nn.CosineSimilarity(dim=1)
 	temp = 0.02
 	codists = torch.exp((1/temp)*cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
@@ -181,9 +181,22 @@ tokenized_length = 512
 dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
+
 #initialize retrieval model
-retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
+n_layers = 16
+retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
 load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
+modules += [f'mixerblocks{i}.conv' for i in range(n_layers)]
+peft_config = LoraConfig(
+	init_lora_weights="olora",
+	r=16, 
+	lora_alpha=32, 
+	lora_dropout=0.,
+	target_modules=modules
+	)
+
+peft_model = get_peft_model(retrieval_model, peft_config)
 
 #llama_config_kwargs = {
 #	'hidden_size': dim,	
