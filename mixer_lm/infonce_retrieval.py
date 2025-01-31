@@ -131,16 +131,17 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 	the rest are negative samples.
 
 	"""
-	summary_embedding = output[0, embedding_index, :] # b t e shape
+	summary_embedding = output[0, embedding_index, :].unsqueeze(0) # b t e shape
 	match_embedding = output[matching_index, embedding_index, :]
 	nonmatch_embeddings = torch.cat((output[1:matching_index, embedding_index, :], output[matching_index+1:, embedding_index, :]), dim=0)
+#	print (summary_embedding.shape, match_embedding.shape, nonmatch_embeddings.shape)
 	cosine_sim = torch.nn.CosineSimilarity(dim=1)
-	temp = 0.01
-	codists = torch.exp(cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
+	temp = 0.02
+	codists = torch.exp((1/temp)*cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
 	# nonmatching_cos = F.normalize(summary_embedding, p=2, dim=1) @ F.normalize(nonmatch_embeddings, p=2, dim=1).T
 	#nondists = torch.sum(torch.exp(nonmatching_cos), dim=0)
-	nondists = torch.sum(torch.exp(cosine_sim(summary_embedding, nonmatch_embeddings)))
-	loss = torch.sum(-torch.log(codists / (codists + nondists)))
+	nondists = torch.sum(torch.exp((1/temp)*cosine_sim(summary_embedding, nonmatch_embeddings)))
+	loss = -torch.sum(torch.log(codists / (codists + nondists)))
 	return loss
 
 
@@ -184,13 +185,13 @@ n_context = tokenized_length
 retrieval_model = LanguageMixer(n_vocab, 512, 16, n_context)
 load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
 
-llama_config_kwargs = {
-	'hidden_size': dim,	
-	'intermediate_size': 4*dim,
-	'num_hidden_layers': 16,
-	'num_attention_heads': 4,
-	'vocab_size': 8000
-}
+#llama_config_kwargs = {
+#	'hidden_size': dim,	
+#	'intermediate_size': 4*dim,
+#	'num_hidden_layers': 16,
+#	'num_attention_heads': 4,
+#	'vocab_size': 8000
+#}
 
 # Initializing a LLaMA model
 #configuration = LlamaConfig(**llama_config_kwargs)
@@ -212,13 +213,13 @@ print ('training begun')
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=2,
+	num_train_epochs=10,
 	per_device_train_batch_size=1, # actually defined in dataset subclass
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
 	eval_steps=20000,
 	save_steps=20000,
-	learning_rate=1e-4,
+	learning_rate=1e-6,
 	fp16=True,
 	evaluation_strategy='steps',
 	output_dir='~/Desktop/contrastive_mixer_512_b32_penult',
