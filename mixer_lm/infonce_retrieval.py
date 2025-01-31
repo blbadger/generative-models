@@ -147,7 +147,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, text_tokens, summary_tokens, batch_size=32, replace=False):
+	def __init__(self, text_tokens, summary_tokens, batch_size=64, replace=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
 		self.context_length = len(summary_tokens[0])
@@ -189,15 +189,15 @@ load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c51
 modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
 modules += [f'mixerblocks{i}.conv' for i in range(n_layers)]
 peft_config = LoraConfig(
-	init_lora_weights="olora",
+#	init_lora_weights="olora",
 	r=16, 
 	lora_alpha=32, 
 	lora_dropout=0.,
 	target_modules=modules
 	)
 
-peft_model = get_peft_model(retrieval_model, peft_config)
-
+model = get_peft_model(retrieval_model, peft_config)
+print (model)
 #llama_config_kwargs = {
 #	'hidden_size': dim,	
 #	'intermediate_size': 4*dim,
@@ -232,10 +232,10 @@ training_arguments = transformers.TrainingArguments(
 	warmup_steps=500,
 	eval_steps=20000,
 	save_steps=20000,
-	learning_rate=1e-6,
+	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_mixer_512_b32_penult',
+	output_dir='~/Desktop/contrastive_mixer_512_b32_lora_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
