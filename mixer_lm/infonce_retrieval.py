@@ -218,7 +218,6 @@ if use_mixer:
 	  empty_model,
 	  weights_location='/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors',
 	  bnb_quantization_config=bnb_quantization_config,
-	 device_map='cpu'
 	)
 
 	peft_config = LoraConfig(
@@ -280,7 +279,7 @@ training_arguments = transformers.TrainingArguments(
 	output_dir='~/Desktop/contrastive_mixer_512_b64_lora_penult',
 	optim='paged_adamw_8bit',
 	overwrite_output_dir=True,
-	save_safetensors=True
+	save_safetensors=True,
 )
 
 trainer = transformers.Trainer(
