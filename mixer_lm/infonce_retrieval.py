@@ -199,27 +199,27 @@ use_mixer = True
 if use_mixer:
 	#initialize retrieval model
 	n_layers = 16
-	# retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
-	# load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+	retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
+	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
 	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
 	modules += [f'mixerblocks{i}.conv' for i in range(n_layers)]
 
-	with init_empty_weights():
-		empty_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
+	# with init_empty_weights():
+	# 	empty_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
 
-	bnb_quantization_config = BnbQuantizationConfig(
-	  load_in_4bit=True,
-	  bnb_4bit_compute_dtype=torch.float16,  
-	  bnb_4bit_use_double_quant=True,         
-	  bnb_4bit_quant_type="nf4"               
-	)
+	# bnb_quantization_config = BnbQuantizationConfig(
+	#   load_in_4bit=True,
+	#   bnb_4bit_compute_dtype=torch.float16,  
+	#   bnb_4bit_use_double_quant=True,         
+	#   bnb_4bit_quant_type="nf4"               
+	# )
 
-	retrieval_model = load_and_quantize_model(
-	  empty_model,
-	  weights_location='/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors',
-	  bnb_quantization_config=bnb_quantization_config,
-	 device_map={'':torch.cuda.current_device()}
-	)
+	# retrieval_model = load_and_quantize_model(
+	#   empty_model,
+	#   weights_location='/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors',
+	#   bnb_quantization_config=bnb_quantization_config,
+	#  device_map={'':torch.cuda.current_device()}
+	# )
 
 	peft_config = LoraConfig(
 	#	init_lora_weights="olora",
