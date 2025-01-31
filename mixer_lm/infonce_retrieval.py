@@ -205,7 +205,7 @@ if use_mixer:
 	modules += [f'mixerblocks{i}.conv' for i in range(n_layers)]
 
 	with init_empty_weights():
-    	empty_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
+		empty_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
 
 	bnb_quantization_config = BnbQuantizationConfig(
 	  load_in_4bit=True,
