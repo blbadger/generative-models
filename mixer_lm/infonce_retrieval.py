@@ -193,42 +193,53 @@ dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-#initialize retrieval model
-n_layers = 16
-retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
-print (retrieval_model)
-print ('model loaded')
+use_mixer = False
+if use_mixer:
+	#initialize retrieval model
+	n_layers = 16
+	retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
+	print (retrieval_model)
+	print ('model loaded')
 
-load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
-modules += [f'mixerblocks{i}.conv' for i in range(n_layers)]
-peft_config = LoraConfig(
-#	init_lora_weights="olora",
-	r=8, 
-	lora_alpha=32, 
-	lora_dropout=0.,
-	target_modules=modules
-	)
+	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
+	modules += [f'mixerblocks{i}.conv' for i in range(n_layers)]
+	peft_config = LoraConfig(
+	#	init_lora_weights="olora",
+		r=8, 
+		lora_alpha=32, 
+		lora_dropout=0.,
+		target_modules=modules
+		)
 
-model = get_peft_model(retrieval_model, peft_config)
+	model = get_peft_model(retrieval_model, peft_config)
+
+else:
+	llama_config_kwargs = {
+		'hidden_size': dim,	
+		'intermediate_size': 4*dim,
+		'num_hidden_layers': 16,
+		'num_attention_heads': 4,
+		'vocab_size': 8000
+	}
+
+	# Initializing a LLaMA model
+	configuration = LlamaConfig(**llama_config_kwargs)
+	model = LlamaForCausalLM(configuration)
+	load_model(model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
+	retrieval_model = RetrievalTransformer(model).float()
+	peft_config = LoraConfig(
+	#	init_lora_weights="olora",
+		r=8, 
+		lora_alpha=32, 
+		lora_dropout=0.,
+		target_modules=['q_proj', 'v_proj', 'up_proj', 'down_proj', 'k_proj']
+		)
+
+	model = get_peft_model(retrieval_model, peft_config)
 
 print (model)
 
-#llama_config_kwargs = {
-#	'hidden_size': dim,	
-#	'intermediate_size': 4*dim,
-#	'num_hidden_layers': 16,
-#	'num_attention_heads': 4,
-#	'vocab_size': 8000
-#}
-
-# Initializing a LLaMA model
-#configuration = LlamaConfig(**llama_config_kwargs)
-#model = LlamaForCausalLM(configuration)
-#load_model(model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
-#retrieval_model = RetrievalTransformer(model).float()
-
-# print (retrieval_model)
 path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device=0) as f:
