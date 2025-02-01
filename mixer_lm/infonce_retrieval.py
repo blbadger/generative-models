@@ -111,7 +111,11 @@ class LanguageMixer(nn.Module):
 		for i, block in enumerate(self.mixerblocks):
 			x = block(x)
 		output = x
-		loss = infoNCEloss(x, matching_index=matching_index)
+		if last_indices:
+			embedding_indices = last_indices
+		else:
+			embedding_indices = -2
+		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
 		return loss, output
 
 
@@ -127,7 +131,11 @@ class RetrievalTransformer(nn.Module):
 		if self.prebatched:
 			input_ids = input_ids.squeeze(0) # p b t -> b t
 		model_output = self.model(input_ids)[0]
-		loss = infoNCEloss(model_output, matching_index=matching_index)
+		if last_indices:
+			embedding_indices = last_indices
+		else:
+			embedding_indices = -2
+		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
 		return loss, model_output
 
 def infoNCEloss(output, matching_index=None, embedding_index=-2):
@@ -135,7 +143,14 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 	Implements Noise-Contrastive Loss. Assumes that there is one positive pair per batch and all 
 	the rest are negative samples.
 
+	args:
+		output: torch.tensor, shape [batch, token, embedding]
+
+	kwargs:
+		matching_index: Optional[None, int], integer index of correct retrieval match
+		embedding_index: Union[int, arr[int]], index or indicies of the last non-pad token
 	"""
+	
 	summary_embedding = output[0, embedding_index, :].unsqueeze(0) # b t e shape
 	match_embedding = output[matching_index, embedding_index, :]
 	nonmatch_embeddings = torch.cat((output[1:matching_index, embedding_index, :], output[matching_index+1:, embedding_index, :]), dim=0)
@@ -152,7 +167,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, text_tokens, summary_tokens, batch_size=32, replace=False):
+	def __init__(self, text_tokens, summary_tokens, batch_size=32, replace=False, right_padded=True):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
 		self.context_length = len(summary_tokens[0])
@@ -173,7 +188,16 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		#print (matching_target, self.summary_tokens[idx])
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index, dtype=torch.long)
-		retrieval_dict = {'input_ids': input.to(torch.long), 'matching_index': labels} # results in p b t shape upon load
+		last_indices = []
+
+		if right_padded:
+			for i in range(self.batch_size):
+				j = 0
+				while j in range(len(input[i])) and int(input[i, j]) != int(tokenizer.encode(tokenizer.pad_token).input_id):
+					j += 1
+				last_indices.append(j-1)
+
+		retrieval_dict = {'input_ids': input.to(torch.long), 'matching_index': labels, 'last_indices': last_indices} # results in p b t shape upon load
 		return retrieval_dict
 
 	def __len__(self):
