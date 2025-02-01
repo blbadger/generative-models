@@ -55,15 +55,15 @@ def extract_tokens(dataset, limit=200000, label='text'):
 	return output_dict
 
 
-query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_0_50000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_50000_100000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_100000_150000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_150000_200000.json'))]
+query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_0_50000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_50000_100000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_100000_150000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_150000_200000.json'))]
 
-path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
+path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
 summary_dataset = map_dataset(query_text, label='summary')
 
-text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
+text_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-8k"
 text_dataset = load_from_disk(text_path, keep_in_memory=None)
 text_dataset = extract_tokens(text_dataset, label='text')
 dataset = {**text_dataset, **summary_dataset}
