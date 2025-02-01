@@ -60,7 +60,7 @@ query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/h
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_100000_150000.json'))]
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_150000_200000.json'))]
 
-path = "/home/bbadger/Desktop/constrastive-fineweb-lpad-200k.safetensors"
+path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
 summary_dataset = map_dataset(query_text, label='summary')
 
 text_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-left"
