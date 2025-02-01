@@ -101,7 +101,7 @@ class LanguageMixer(nn.Module):
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 
 
-	def forward(self, input_ids, matching_index, **kwargs):
+	def forward(self, input_ids, matching_index, last_indices, **kwargs):
 		x = input_ids
 		#print (input_ids[0, 2, :], matching_index)
 		if self.prebatched_input:
@@ -110,13 +110,14 @@ class LanguageMixer(nn.Module):
 		x = self.wte(x)
 		for i, block in enumerate(self.mixerblocks):
 			x = block(x)
-		output = x
+		model_output = x
+		last_indices = [int(i) for i in last_indices[0]]
 		if last_indices:
 			embedding_indices = last_indices
 		else:
 			embedding_indices = -2
 		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
-		return loss, output
+		return loss, model_output
 
 
 class RetrievalTransformer(nn.Module):
@@ -126,17 +127,20 @@ class RetrievalTransformer(nn.Module):
 		self.model = model.model # no lm head
 		self.prebatched = prebatched
 
-	def forward(self, input_ids, matching_index, *kwargs):
+	def forward(self, input_ids, matching_index, last_indices, **kwargs):
 		# LlamaModel forward pass
 		if self.prebatched:
 			input_ids = input_ids.squeeze(0) # p b t -> b t
 		model_output = self.model(input_ids)[0]
+		last_indices = [int(i) for i in last_indices[0]]
 		if last_indices:
 			embedding_indices = last_indices
 		else:
 			embedding_indices = -2
 		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
 		return loss, model_output
+
+
 
 def infoNCEloss(output, matching_index=None, embedding_index=-2):
 	"""
@@ -150,7 +154,6 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 		matching_index: Optional[None, int], integer index of correct retrieval match
 		embedding_index: Union[int, arr[int]], index or indicies of the last non-pad token
 	"""
-	
 	summary_embedding = output[0, embedding_index, :].unsqueeze(0) # b t e shape
 	match_embedding = output[matching_index, embedding_index, :]
 	nonmatch_embeddings = torch.cat((output[1:matching_index, embedding_index, :], output[matching_index+1:, embedding_index, :]), dim=0)
@@ -167,7 +170,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, text_tokens, summary_tokens, batch_size=32, replace=False, right_padded=True):
+	def __init__(self, text_tokens, summary_tokens, batch_size=32, replace=False, right_padded=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
 		self.context_length = len(summary_tokens[0])
@@ -175,6 +178,8 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		self.allocated_input = torch.zeros((batch_size, self.context_length))
 		self.replace = replace
 		self.batch_size = batch_size
+		self.right_padded=right_padded
+		self.pad_token = tokenizer.encode(tokenizer.pad_token)[-1]
 
 	def __getitem__(self, idx):
 		input = torch.zeros((self.batch_size, self.context_length)) # b t shape
@@ -185,15 +190,14 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		input[1:] = self.text_tokens[indices]
 		target_index = random.randint(1, self.batch_size-1) # random index to put target embedding
 		matching_target = self.text_tokens[idx] # target the query matches
-		#print (matching_target, self.summary_tokens[idx])
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index, dtype=torch.long)
 		last_indices = []
-
-		if right_padded:
+	#	print (f'index {idx} summary: {tokenizer.decode(self.summary_tokens[idx])}, match:{tokenizer.decode(self.text_tokens[idx])}')
+		if self.right_padded:
 			for i in range(self.batch_size):
 				j = 0
-				while j in range(len(input[i])) and int(input[i, j]) != int(tokenizer.encode(tokenizer.pad_token).input_id):
+				while j in range(len(input[i])) and int(input[i, j]) != self.pad_token:
 					j += 1
 				last_indices.append(j-1)
 
@@ -225,6 +229,7 @@ if use_mixer:
 	n_layers = 16
 	retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
 	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+#	load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_512_n16_c512_lpad/checkpoint-16000/model.safetensors')
 	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
 #	modules += [f'mixerblocks.{i}.conv' for i in range(n_layers)]
 
@@ -279,15 +284,16 @@ else:
 	model = get_peft_model(retrieval_model, peft_config)
 
 print (model)
-path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
+#path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
+path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device='cpu') as f:
 	for k in f.keys():
 		tokens[k] = f.get_tensor(k)
 
 split_index = 190000
-train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index])
-test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:])
+train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index], right_padded=False)
+test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:], right_padded=False)
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
@@ -300,7 +306,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_llama_512_b32_lora_penult',
+	output_dir='~/Desktop/contrastive_finemath_mixer_512_b64_lora_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

@@ -19,7 +19,7 @@ def tokenization(example, n_ctx=128):
 			truncation=True,
 			max_length=512,
 			padding=True,
-			padding_side='right'
+			padding_side='left'
 		).input_ids
     return {'input_ids': tokens}
 
@@ -37,7 +37,7 @@ def map_dataset(array, label='summary'):
 			truncation=True,
 			max_length=512,
 			padding='max_length',
-			padding_side='right'
+			padding_side='left'
 		).input_ids
 		tokenized_array.append(tokens[0])
 	output_dict = {label: torch.stack(tokenized_array, dim=0)}
@@ -60,7 +60,7 @@ query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/h
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_100000_150000.json'))]
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_150000_200000.json'))]
 
-path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
+path = "/home/bbadger/Desktop/contrastive-finemath-lpad-200k.safetensors"
 summary_dataset = map_dataset(query_text, label='summary')
 
 text_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-8k"
