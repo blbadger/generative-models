@@ -19,7 +19,7 @@ def tokenization(example, n_ctx=128):
 			truncation=True,
 			max_length=512,
 			padding=True,
-			padding_side='left'
+			padding_side='right'
 		).input_ids
     return {'input_ids': tokens}
 
@@ -37,7 +37,7 @@ def map_dataset(array, label='summary'):
 			truncation=True,
 			max_length=512,
 			padding='max_length',
-			padding_side='left'
+			padding_side='right'
 		).input_ids
 		tokenized_array.append(tokens[0])
 	output_dict = {label: torch.stack(tokenized_array, dim=0)}

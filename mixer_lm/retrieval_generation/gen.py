@@ -36,11 +36,11 @@ if __name__ == '__main__':
         		{"role": "system", "content": "You are an assistant for creating summaries for short stories."},
                   		{
                       	"role": "user",
-                      	"content": f"Give a brief one-sentence summary of the following with no other output, do not begin with 'Here is a summary...'. Text: {text}"
+                      	"content": f"Give a brief few-word summary of the following with no other output, do not begin with 'Here is a summary...'. Text: {text}"
                   	}
         		]
         	)
-	        print (text,'\n Summary: \n', output['choices'][0]['message']['content'])
+	       # print (text,'\n Summary: \n', output['choices'][0]['message']['content'])
        		outputs.append(output)
 
 	output_path = args.output_path + f'_{args.start}_{args.stop}.json'
