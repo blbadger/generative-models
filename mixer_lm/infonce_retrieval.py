@@ -152,7 +152,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 
 class RetrievalDataset(torch.utils.data.Dataset):
 
-	def __init__(self, text_tokens, summary_tokens, batch_size=64, replace=False):
+	def __init__(self, text_tokens, summary_tokens, batch_size=32, replace=False):
 		self.summary_tokens = summary_tokens
 		self.text_tokens = text_tokens
 		self.context_length = len(summary_tokens[0])
@@ -195,7 +195,7 @@ dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = True
+use_mixer = False
 if use_mixer:
 	#initialize retrieval model
 	n_layers = 16
@@ -271,12 +271,12 @@ training_arguments = transformers.TrainingArguments(
 	per_device_train_batch_size=1, # actually defined in dataset subclass
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
-	eval_steps=20000,
-	save_steps=20000,
+	eval_steps=10000,
+	save_steps=10000,
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_mixer_512_b64_lora_penult',
+	output_dir='~/Desktop/contrastive_llama_512_b32_lora_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
