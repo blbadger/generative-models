@@ -260,7 +260,7 @@ n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
 tokenized_length = 512
-dim = 512
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
 model = LanguageMixer(n_vocab, dim, 16).float()
@@ -304,15 +304,15 @@ print ('training begun')
 print (train_dataset[0])
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=2,
-	per_device_train_batch_size=64,
-	per_device_eval_batch_size=64,
+	per_device_train_batch_size=32,
+	per_device_eval_batch_size=32,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=8000,
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/finemath_mixer_512_n16_c512_lpad',
+	output_dir='~/Desktop/finemath_mixer_1024_n16_c512_lpad',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
@@ -329,4 +329,4 @@ trainer = transformers.Trainer(
 
 model.train()
 #trainer.train()
-trainer.train('/home/bbadger/Desktop/finemath_mixer_512_n16_c512_lpad/checkpoint-16000')
+trainer.train('/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-144000')
