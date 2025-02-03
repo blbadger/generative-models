@@ -282,7 +282,7 @@ else:
 	# Initializing a LLaMA model
 	configuration = LlamaConfig(**llama_config_kwargs)
 	model = LlamaForCausalLM(configuration)
-	load_model(model, '/home/bbadger/Desktop/fineweb_llama_512_n16_h4_b32/checkpoint-200000/model.safetensors')
+	load_model(model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
 	retrieval_model = RetrievalTransformer(model).float()
 	peft_config = LoraConfig(
 	#	init_lora_weights="olora",
