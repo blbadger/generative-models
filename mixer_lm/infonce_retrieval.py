@@ -223,13 +223,13 @@ dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = True
+use_mixer = False
 if use_mixer:
 	#initialize retrieval model
 	n_layers = 16
-	retrieval_model = LanguageMixer(n_vocab, 1024, n_layers, n_context)
-#	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-	load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-144000/model.safetensors')
+	retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
+	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+#	load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_512_n32_c512_lpad/checkpoint-136000/model.safetensors')
 	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
 #	modules += [f'mixerblocks.{i}.conv' for i in range(n_layers)]
 
@@ -271,7 +271,7 @@ else:
 	# Initializing a LLaMA model
 	configuration = LlamaConfig(**llama_config_kwargs)
 	model = LlamaForCausalLM(configuration)
-	load_model(model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
+	load_model(model, '/home/bbadger/Desktop/fineweb_llama_512_n16_h4_b32/checkpoint-200000/model.safetensors')
 	retrieval_model = RetrievalTransformer(model).float()
 	peft_config = LoraConfig(
 	#	init_lora_weights="olora",
@@ -281,11 +281,12 @@ else:
 		target_modules=['q_proj', 'v_proj', 'up_proj', 'down_proj', 'k_proj']
 		)
 
-	model = get_peft_model(retrieval_model, peft_config)
+	#model = get_peft_model(retrieval_model, peft_config)
+	model = retrieval_model
 
-print (model)
-#path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
-path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
+#print (model)
+path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
+#path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device='cpu') as f:
 	for k in f.keys():
@@ -306,7 +307,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_finemath_mixer_1024_b32_penult',
+	output_dir='~/Desktop/contrastive_finemath_llama_finepre_512_n16_b32_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
