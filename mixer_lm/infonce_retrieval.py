@@ -178,8 +178,24 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		self.allocated_input = torch.zeros((batch_size, self.context_length))
 		self.replace = replace
 		self.batch_size = batch_size
-		self.right_padded=right_padded
+
 		self.pad_token = tokenizer.encode(tokenizer.pad_token)[-1]
+		self.summary_indices = []
+		self.text_indices = []
+		self.right_padded = right_padded
+		if right_padded:
+			for i in range(len(self.summary_tokens)):
+				j = 0
+				while j in range(len(summary_tokens[i])) and int(summary_tokens[i, j]) != self.pad_token:
+					j += 1
+				self.summary_indices.append(j-1)
+
+			for i in range(len(self.text_tokens)):
+				j = 0
+				while j in range(len(text_tokens[i])) and int(text_tokens[i, j]) != self.pad_token:
+					j += 1
+				self.text_indices.append(j-1)
+
 
 	def __getitem__(self, idx):
 		input = torch.zeros((self.batch_size, self.context_length)) # b t shape
@@ -193,14 +209,9 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		input[target_index] = matching_target
 		labels = torch.tensor(target_index, dtype=torch.long)
 		last_indices = []
-	#	print (f'index {idx} summary: {tokenizer.decode(self.summary_tokens[idx])}, match:{tokenizer.decode(self.text_tokens[idx])}')
 		if self.right_padded:
-			for i in range(self.batch_size):
-				j = 0
-				while j in range(len(input[i])) and int(input[i, j]) != self.pad_token:
-					j += 1
-				last_indices.append(j-1)
-
+			last_indices = [self.summary_indices[idx]] + [self.text_indices[i] for i in indices]
+	#	print (f'index {idx} summary: {tokenizer.decode(self.summary_tokens[idx])}, match:{tokenizer.decode(self.text_tokens[idx])}')
 		retrieval_dict = {'input_ids': input.to(torch.long), 'matching_index': labels, 'last_indices': last_indices} # results in p b t shape upon load
 		return retrieval_dict
 
