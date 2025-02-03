@@ -234,13 +234,13 @@ dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = False
+use_mixer = True
 if use_mixer:
 	#initialize retrieval model
-	n_layers = 16
+	n_layers = 32
 	retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
-	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-#	load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_512_n32_c512_lpad/checkpoint-136000/model.safetensors')
+#	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_512_n32_c512_lpad/checkpoint-136000/model.safetensors')
 	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
 #	modules += [f'mixerblocks.{i}.conv' for i in range(n_layers)]
 
@@ -303,13 +303,13 @@ with safe_open(path, framework="pt", device='cpu') as f:
 	for k in f.keys():
 		tokens[k] = f.get_tensor(k)
 
-split_index = 190000
+split_index = 180000
 train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index], right_padded=False)
 test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:], right_padded=False)
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=10,
+	num_train_epochs=1,
 	per_device_train_batch_size=1, # actually defined in dataset subclass
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,

@@ -8,7 +8,11 @@ import random
 from accelerate import infer_auto_device_map
 from safetensors.torch import load_model
 from transformers import LlamaModel, LlamaConfig, LlamaForCausalLM
-
+import torch.nn as nn
+import torch.nn.functional as F
+from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
+import threading
+from einops import rearrange
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -97,13 +101,13 @@ class LanguageMixer(nn.Module):
 		for i, block in enumerate(self.mixerblocks):
 			x = block(x)
 		model_output = x
-		last_indices = [int(i) for i in last_indices[0]]
+		if last_indices:
+			last_indices = [int(i) for i in last_indices[0]]
 		if last_indices:
 			embedding_indices = last_indices
 		else:
 			embedding_indices = -2
-		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
-		return loss, model_output
+		return model_output
 
 
 class RetrievalTransformer(nn.Module):
@@ -118,13 +122,12 @@ class RetrievalTransformer(nn.Module):
 		if self.prebatched:
 			input_ids = input_ids.squeeze(0) # p b t -> b t
 		model_output = self.model(input_ids)[0]
-		last_indices = [int(i) for i in last_indices[0]]
 		if last_indices:
+			last_indices = [int(i) for i in last_indices[0]]
 			embedding_indices = last_indices
 		else:
 			embedding_indices = -2
-		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
-		return loss, model_output
+		return model_output
 
 
 def infoNCEloss(output, matching_index=None, embedding_index=-2):
@@ -164,36 +167,47 @@ def generate_sample(query_dataset, target_dataset, index, dataset_size=20000, st
 
 # random inits different for each GPU
 local_rank = threading.get_ident() % 1231
-print (local_rank)
 torch.manual_seed(local_rank)
 random.seed(local_rank) 
 torch.cuda.manual_seed(local_rank)
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k", pad_id=1)
 tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
 dim = 512
-n_layers = 16
+n_layers = 32
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
 use_mixer = False
 if use_mixer:
 	#initialize retrieval model
-	retrieval_model = RetrievalMixer(n_vocab, dim, n_layers, n_context)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_512_n32_b32_penult/checkpoint-10000/model.safetensors')
+	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_1024_b32_penult/checkpoint-10000/model.safetensors')
 
 else:
-	retrieval_model = RetrievalTransformer(n_vocab, dim, n_layers, n_context)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_llama_512/checkpoint-10000/model.safetensors')
+	llama_config_kwargs = {
+		'hidden_size': dim,	
+		'intermediate_size': 4*dim,
+		'num_hidden_layers': 16,
+		'num_attention_heads': 4,
+		'vocab_size': 8000
+	}
+
+	# Initializing a LLaMA model
+	configuration = LlamaConfig(**llama_config_kwargs)
+	model = LlamaForCausalLM(configuration)
+	retrieval_model = RetrievalTransformer(model).float().to(device)
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_llama_512_b32_penult/checkpoint-10000/model.safetensors')
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 reverse_tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
-
+tokenizer.pad_token = tokenizer.decode(tokenizer.encode(tokenizer.eos_token)[-1])
+print (tokenizer.encode(tokenizer.pad_token))
 def load_dataset(finemath=True):
 	if not finemath:
 		target_dataset = datasets.load_from_disk('/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512')
@@ -218,9 +232,8 @@ total = 0
 for i in range(180000, 200000):
 	# Each query must come with a one-sentence instruction that describes the task
 	n_samples = 32
-	task = 'Given a summary of a passage, find the corresponding text.'
 	queries = [
-		get_detailed_instruct(task, query_dataset[i])
+		query_dataset[i]
 	]
 	# No need to add instruction for retrieval documents
 	samples, target_index = generate_sample(query_dataset, target_dataset, i, n_context=n_samples)
@@ -229,10 +242,19 @@ for i in range(180000, 200000):
 	samples[0] = query_dataset[i]
 	max_length = 512
 	# Tokenize the input texts
-	batch_dict = tokenizer(samples, max_length=max_length, padding=True, truncation=True, return_tensors='pt').to(device)
+	
+	batch_dict = tokenizer.batch_encode_plus(
+			samples,
+			add_special_tokens=False,
+			return_tensors='pt',
+			truncation=True,
+			padding='max_length',
+			padding_side='left', 
+			max_length=max_length
+		).to(device)
 	with torch.no_grad():
-		outputs = model(**batch_dict)
-		embeddings = output[:, -2, :]
+		outputs = retrieval_model(batch_dict.input_ids, [i], [])
+		embeddings = outputs[:, -2, :]
 		# normalize embeddings
 		embeddings = F.normalize(embeddings, p=2, dim=1)
 		scores = (embeddings[:1] @ embeddings[1:].T) * 100
