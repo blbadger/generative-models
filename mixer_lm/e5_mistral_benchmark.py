@@ -63,10 +63,10 @@ def load_dataset(finemath=True):
 		query_dataset += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_50000_100000.json'))]
 		query_dataset += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_100000_150000.json'))]
 		query_dataset += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_150000_200000.json'))]
-	return query_dataset
+	return query_dataset, target_dataset
 
 
-query_dataset = load_dataset()
+query_dataset, target_dataset = load_dataset()
 total_correct = 0
 total = 0
 for i in range(180000, 200000):
