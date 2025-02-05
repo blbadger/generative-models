@@ -237,10 +237,10 @@ n_context = tokenized_length
 use_mixer = True
 if use_mixer:
 	#initialize retrieval model
-	n_layers = 32
-	retrieval_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
+	n_layers = 16
+	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
 #	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-	load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_512_n32_c512_lpad/checkpoint-136000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
 	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
 #	modules += [f'mixerblocks.{i}.conv' for i in range(n_layers)]
 
@@ -282,7 +282,7 @@ else:
 	# Initializing a LLaMA model
 	configuration = LlamaConfig(**llama_config_kwargs)
 	model = LlamaForCausalLM(configuration)
-	load_model(model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
+	load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_b32_c512/checkpoint-200000/model.safetensors')
 	retrieval_model = RetrievalTransformer(model).float()
 	peft_config = LoraConfig(
 	#	init_lora_weights="olora",
@@ -318,7 +318,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_finemath_llama_finepre_512_n16_b32_penult',
+	output_dir='~/Desktop/contrastive_finemath_preweb_mixer_512_n16_b32_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True

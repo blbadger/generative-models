@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
 import threading
 from einops import rearrange
+from tqdm import tqdm
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -177,15 +178,15 @@ n_vocab = len(tokenizer)
 
 tokenized_length = 512
 dim = 512
-n_layers = 32
+n_layers = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = False
+use_mixer = True
 if use_mixer:
 	#initialize retrieval model
 	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_1024_b32_penult/checkpoint-10000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_preweb_mixer_512_n16_b32_penult/checkpoint-60000/model.safetensors')
 
 else:
 	llama_config_kwargs = {
@@ -200,7 +201,7 @@ else:
 	configuration = LlamaConfig(**llama_config_kwargs)
 	model = LlamaForCausalLM(configuration)
 	retrieval_model = RetrievalTransformer(model).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_llama_512_b32_penult/checkpoint-10000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_llama_512_n16_b32_penult/checkpoint-45000/model.safetensors')
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -229,7 +230,7 @@ def load_dataset(finemath=True):
 query_dataset, target_dataset = load_dataset()
 total_correct = 0
 total = 0
-for i in range(180000, 200000):
+for i in tqdm(range(180000, 200000)):
 	# Each query must come with a one-sentence instruction that describes the task
 	n_samples = 32
 	queries = [
@@ -259,10 +260,11 @@ for i in range(180000, 200000):
 		embeddings = F.normalize(embeddings, p=2, dim=1)
 		scores = (embeddings[:1] @ embeddings[1:].T) * 100
 		top_index = int(torch.topk(scores, 1).indices[0])
-		print ('Top index, target index', top_index, target_index)
+		total += 1
 		if top_index+1 == target_index:
 			total_correct += 1
-		total += 1
-		print (f'Top-1 accuracy: ', total_correct / total)
+		if i % 500 == 0: 
+			print ('Top index, target index', top_index, target_index)
+			print (f'Top-1 accuracy: ', total_correct / total)
 
 	

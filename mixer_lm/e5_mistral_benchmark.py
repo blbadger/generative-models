@@ -8,6 +8,7 @@ import random
 from accelerate import infer_auto_device_map
 from safetensors.torch import load_model
 from transformers import LlamaModel, LlamaConfig, LlamaForCausalLM
+from tqdm import tqdm
 
 def generate_sample(query_dataset, target_dataset, index, dataset_size=20000, start_index=180000, n_context=128, replace=False):
 	prob_weights = torch.ones(dataset_size)
@@ -47,6 +48,7 @@ bnb_config = BitsAndBytesConfig(
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct")
 model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", quantization_config=bnb_config, device_map='auto')
+#model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", torch_dtype=torch.float16, device_map='auto')
 reverse_tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 
 def load_dataset(finemath=True):
@@ -69,7 +71,8 @@ def load_dataset(finemath=True):
 query_dataset, target_dataset = load_dataset()
 total_correct = 0
 total = 0
-for i in range(180000, 200000):
+start, stop = 180000, 200000
+for i in tqdm(range(start, stop)):
 	# Each query must come with a one-sentence instruction that describes the task
 	n_samples = 32
 	task = 'Given a summary of a passage, find the corresponding text.'
@@ -92,10 +95,11 @@ for i in range(180000, 200000):
 		embeddings = F.normalize(embeddings, p=2, dim=1)
 		scores = (embeddings[:1] @ embeddings[1:].T) * 100
 		top_index = int(torch.topk(scores, 1).indices[0])
-		print ('Top index, target index', top_index, target_index)
 		if top_index+1 == target_index:
 			total_correct += 1
 		total += 1
-		print (f'Top-1 accuracy: ', total_correct / total)
+		if i % 500 == 0:
+			print (f'Top-1 accuracy: ', total_correct / total)
+			print ('Top index, target index', top_index, target_index)
 
 	
