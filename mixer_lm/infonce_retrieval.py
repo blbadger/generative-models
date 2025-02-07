@@ -212,7 +212,7 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		if self.right_padded:
 			for i in range(len(input)):
 				j = 0
-				while j in range(len(summary_tokens[i])) and int(summary_tokens[i, j]) != self.pad_token:
+				while j in range(len(input[i])) and int(input[i, j]) != self.pad_token:
 					j += 1
 				last_indices.append(j-2)
 
@@ -311,9 +311,8 @@ with safe_open(path, framework="pt", device='cpu') as f:
 split_index = 180000
 train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index], right_padded=True)
 test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:], right_padded=True)
-train_dataset=test_dataset
 
-_
+
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=1,
@@ -328,7 +327,8 @@ training_arguments = transformers.TrainingArguments(
 	output_dir='~/Desktop/contrastive_finemath_preweb_mixer_1024_n16_b32_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
-	save_safetensors=True
+	save_safetensors=True,
+	logging_steps=10
 )
 
 trainer = transformers.Trainer(

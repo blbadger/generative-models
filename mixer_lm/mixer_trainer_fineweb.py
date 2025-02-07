@@ -329,4 +329,4 @@ trainer = transformers.Trainer(
 
 model.train()
 #trainer.train()
-trainer.train('/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-200000')
+trainer.train('/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-296000')
