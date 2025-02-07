@@ -154,15 +154,25 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 		matching_index: Optional[None, int], integer index of correct retrieval match
 		embedding_index: Union[int, arr[int]], index or indicies of the last non-pad token
 	"""
-	summary_embedding = output[0, embedding_index, :].unsqueeze(0) # b t e shape
-	match_embedding = output[matching_index, embedding_index, :]
-	nonmatch_embeddings = torch.cat((output[1:matching_index, embedding_index, :], output[matching_index+1:, embedding_index, :]), dim=0)
+	if not isinstance(embedding_index, int):
+		summary_embedding = output[0, embedding_index[0], :].unsqueeze(0)
+		match_embedding = output[matching_index, embedding_index[matching_index], :]
+		other_embeddings = []
+		for i in range(1, matching_index):
+			other_embeddings.append(output[i, embedding_index[i], :])
+		for i in range(matching_index+1, len(output)):
+			other_embeddings.append(output[i, embedding_index[i], :])
+		nonmatch_embeddings = torch.stack(other_embeddings)
+
+	else:
+		summary_embedding = output[0, embedding_index, :].unsqueeze(0) # b t e shape
+		match_embedding = output[matching_index, embedding_index, :]
+		nonmatch_embeddings = torch.cat((output[1:matching_index, embedding_index, :], output[matching_index+1:, embedding_index, :]), dim=0)
+
 	cosine_sim = torch.nn.CosineSimilarity(dim=1)
 	temp = 0.02
 	codists = torch.exp((1/temp)*cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
 #	print (matching_index, torch.topk(cosine_sim(summary_embedding, output[1:, embedding_index, :]), 1, dim=0).indices)
-	# nonmatching_cos = F.normalize(summary_embedding, p=2, dim=1) @ F.normalize(nonmatch_embeddings, p=2, dim=1).T
-	#nondists = torch.sum(torch.exp(nonmatching_cos), dim=0)
 	nondists = torch.sum(torch.exp((1/temp)*cosine_sim(summary_embedding, nonmatch_embeddings)))
 	loss = -torch.sum(torch.log(codists / (codists + nondists)))
 	return loss
