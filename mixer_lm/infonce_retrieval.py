@@ -230,7 +230,7 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 512
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
@@ -240,7 +240,7 @@ if use_mixer:
 	n_layers = 16
 	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
 #	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512/checkpoint-200000/model.safetensors')
 	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
 #	modules += [f'mixerblocks.{i}.conv' for i in range(n_layers)]
 
@@ -296,17 +296,19 @@ else:
 	model = retrieval_model
 
 #print (model)
-path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
-#path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
+#path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
+path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device='cpu') as f:
 	for k in f.keys():
 		tokens[k] = f.get_tensor(k)
 
 split_index = 180000
-train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index], right_padded=False)
-test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:], right_padded=False)
+train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index], right_padded=True)
+test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:], right_padded=True)
+train_dataset=test_dataset
 
+_
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=1,
@@ -318,7 +320,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_finemath_preweb_mixer_512_n16_b32_penult',
+	output_dir='~/Desktop/contrastive_finemath_preweb_mixer_1024_n16_b32_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
@@ -332,3 +334,4 @@ trainer = transformers.Trainer(
 )
 
 trainer.train()
+#trainer.train("/home/bbadger/Desktop/contrastive_finemath_preweb_mixer_512_n16_b32_penult/checkpoint-60000")
