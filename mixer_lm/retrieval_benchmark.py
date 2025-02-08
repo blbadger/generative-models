@@ -160,7 +160,7 @@ def generate_sample(query_dataset, target_dataset, index, dataset_size=20000, st
 	prob_weights[index-start_index] = 0
 	indices = torch.multinomial(prob_weights, n_context-1, replacement=replace)
 	for i in indices:
-		target_text = reverse_tokenizer.decode(target_dataset[int(i)]['input_ids'])
+		target_text = reverse_tokenizer.decode(target_dataset[int(i+start_index)]['input_ids'])
 		input.append(str(target_text))
 	target_index = random.randint(1, n_context-1) # random index to put target embedding
 	input[target_index] = reverse_tokenizer.decode(target_dataset[int(index)]['input_ids'])
@@ -177,7 +177,7 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim =1024
+dim = 512
 n_layers = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
@@ -186,7 +186,7 @@ use_mixer = True
 if use_mixer:
 	#initialize retrieval model
 	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_preweb_mixer_1024_n16_b32_penult/checkpoint-45000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_preweb_mixer_512_n16_b32_penult/checkpoint-120000/model.safetensors')
 
 else:
 	llama_config_kwargs = {
