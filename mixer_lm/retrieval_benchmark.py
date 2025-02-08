@@ -230,14 +230,15 @@ def load_dataset(finemath=True):
 query_dataset, target_dataset = load_dataset()
 total_correct = 0
 total = 0
-for i in tqdm(range(180000, 200000)):
+start, stop = 0, 2000
+for i in tqdm(range(start, stop)):
 	# Each query must come with a one-sentence instruction that describes the task
 	n_samples = 32
 	queries = [
 		query_dataset[i]
 	]
 	# No need to add instruction for retrieval documents
-	samples, target_index = generate_sample(query_dataset, target_dataset, i, n_context=n_samples)
+	samples, target_index = generate_sample(query_dataset, target_dataset, i, start_index=start, n_context=n_samples)
 
 	#samples[0] = str(queries[0])
 	samples[0] = query_dataset[i]

@@ -170,7 +170,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 		nonmatch_embeddings = torch.cat((output[1:matching_index, embedding_index, :], output[matching_index+1:, embedding_index, :]), dim=0)
 
 	cosine_sim = torch.nn.CosineSimilarity(dim=1)
-	temp = 0.02
+	temp = 0.2
 	codists = torch.exp((1/temp)*cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
 #	print (matching_index, torch.topk(cosine_sim(summary_embedding, output[1:, embedding_index, :]), 1, dim=0).indices)
 	nondists = torch.sum(torch.exp((1/temp)*cosine_sim(summary_embedding, nonmatch_embeddings)))
@@ -325,7 +325,7 @@ test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=1,
+	num_train_epochs=2,
 	per_device_train_batch_size=1, # actually defined in dataset subclass
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
@@ -334,7 +334,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_finemath_preweb_mixer_1024_n16_extended_b32_penult',
+	output_dir='~/Desktop/contrastive_finemath_mixer_1024_n16_extended_b32_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
