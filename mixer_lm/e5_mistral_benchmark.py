@@ -16,7 +16,7 @@ def generate_sample(query_dataset, target_dataset, index, dataset_size=20000, st
 	prob_weights[index-start_index] = 0
 	indices = torch.multinomial(prob_weights, n_context-1, replacement=replace)
 	for i in indices:
-		target_text = reverse_tokenizer.decode(target_dataset[int(i)]['input_ids'])
+		target_text = reverse_tokenizer.decode(target_dataset[int(i+start_index)]['input_ids'])
 		input.append(str(target_text))
 	target_index = random.randint(1, n_context-1) # random index to put target embedding
 	input[target_index] = reverse_tokenizer.decode(target_dataset[int(index)]['input_ids'])
@@ -60,7 +60,7 @@ def load_dataset(finemath=True):
 		query_dataset += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_150000_200000.json'))]
 
 	else:
-		target_dataset = datasets.load_from_disk('/home/bbadger/Desktop/finemath-4-tokenized-train-c512-8k')
+		target_dataset = datasets.load_from_disk('/home/bbadger/Desktop/finemath-4-tokenized-train-c512-lpad-8k')
 		query_dataset = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_0_50000.json'))]
 		query_dataset += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_50000_100000.json'))]
 		query_dataset += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_100000_150000.json'))]
@@ -85,8 +85,10 @@ for i in tqdm(range(start, stop)):
 	#samples[0] = str(queries[0])
 	samples[0] = query_dataset[i]
 	max_length = 512
+
 	# Tokenize the input texts
 	batch_dict = tokenizer(samples, max_length=max_length, padding=True, truncation=True, return_tensors='pt').to(device)
+	# print (batch_dict.input_ids[5, :])
 	with torch.no_grad():
 		outputs = model(**batch_dict)
 		embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
@@ -98,8 +100,8 @@ for i in tqdm(range(start, stop)):
 		if top_index+1 == target_index:
 			total_correct += 1
 		total += 1
-		if i % 5 == 0:
-			print (f'Top-1 accuracy: ', total_correct / total)
-			print ('Top index, target index', top_index, target_index)
+		# if i % 5 == 0:
+		print (f'Top-1 accuracy: ', total_correct / total)
+		print ('Top index, target index', top_index, target_index)
 
 	
