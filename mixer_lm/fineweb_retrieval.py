@@ -423,8 +423,8 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=50,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=128,
+	per_device_eval_batch_size=128,
 	warmup_steps=500,
 	eval_steps=2000,
 	save_steps=2000,

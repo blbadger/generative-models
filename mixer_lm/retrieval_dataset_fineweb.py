@@ -201,7 +201,7 @@ print ('pad token: ', tokenizer.encode(tokenizer.pad_token))
 path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-8k"
 data = load_from_disk(path)
 
-start, split, end = 0, 180000, 200000
+start, split, end = 200000, 380000, 400000
 offset = 0
 train_data = data[start+offset:split+offset]['input_ids']
 test_data = data[split+offset:end+offset]['input_ids']
@@ -240,10 +240,10 @@ else:
 target_train = embedder(train_data)
 target_test = embedder(test_data)
 print ('Inputs embedded')
-query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_0_50000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_50000_100000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_100000_150000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_150000_200000.json'))]
+query_text = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_200000_250000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_250000_300000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_300000_350000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_350000_400000.json'))]
 print ('query text length', len(query_text), query_text[0])
 query_train_data = batch_tokenize_input(query_text, start=start, end=split)
 query_test_data = batch_tokenize_input(query_text, start=split, end=end)
@@ -253,7 +253,7 @@ query_train = embedder(query_train_data)
 query_test = embedder(query_test_data)
 print ('Queries embedded')
 dictionary = {'query_train': query_train, 'query_test': query_test, 'target_train': target_train, 'target_test': target_test}
-filepath = '/home/bbadger/Desktop/finemath_mixer_1024_retrieval_200k.safetensors'
+filepath = '/home/bbadger/Desktop/finemath_mixer_1024_retrieval_200_400k.safetensors'
 save_file(dictionary, filepath)
 print ('Safetensors file saved')
 
