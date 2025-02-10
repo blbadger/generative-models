@@ -170,7 +170,7 @@ def infoNCEloss(output, matching_index=None, embedding_index=-2):
 		nonmatch_embeddings = torch.cat((output[1:matching_index, embedding_index, :], output[matching_index+1:, embedding_index, :]), dim=0)
 
 	cosine_sim = torch.nn.CosineSimilarity(dim=1)
-	temp = 0.2
+	temp = 0.02
 	codists = torch.exp((1/temp)*cosine_sim(summary_embedding, match_embedding)) # temperature=0.01
 #	print (matching_index, torch.topk(cosine_sim(summary_embedding, output[1:, embedding_index, :]), 1, dim=0).indices)
 	nondists = torch.sum(torch.exp((1/temp)*cosine_sim(summary_embedding, nonmatch_embeddings)))
@@ -245,17 +245,17 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 1024
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = True
+use_mixer = False
 if use_mixer:
 	#initialize retrieval model
 	n_layers = 16
 	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
 #	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-	load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-360000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-200000/model.safetensors')
 	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
 #	modules += [f'mixerblocks.{i}.conv' for i in range(n_layers)]
 
@@ -297,7 +297,7 @@ else:
 	# Initializing a LLaMA model
 	configuration = LlamaConfig(**llama_config_kwargs)
 	model = LlamaForCausalLM(configuration)
-	load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_b32_c512/checkpoint-200000/model.safetensors')
+	load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-200000/model.safetensors')
 	retrieval_model = RetrievalTransformer(model).float()
 	peft_config = LoraConfig(
 	#	init_lora_weights="olora",
@@ -325,7 +325,7 @@ test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][
 
 pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=2,
+	num_train_epochs=1,
 	per_device_train_batch_size=1, # actually defined in dataset subclass
 	per_device_eval_batch_size=1, # actually defined in dataset subclass
 	warmup_steps=500,
@@ -334,7 +334,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_finemath_mixer_1024_n16_extended_b32_penult',
+	output_dir='~/Desktop/contrastive_finemath_transformer_512_n16_b32_lpad_penult',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
@@ -349,4 +349,4 @@ trainer = transformers.Trainer(
 )
 
 trainer.train()
-#trainer.train("/home/bbadger/Desktop/contrastive_finemath_preweb_mixer_512_n16_b32_penult/checkpoint-60000")
+#trainer.train("/home/bbadger/Desktop/contrastive_finemath_mixer_1024_n16_b32_penult/checkpoint-45000")

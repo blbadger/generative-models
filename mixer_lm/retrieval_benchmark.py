@@ -182,11 +182,11 @@ n_layers = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = True
+use_mixer = False
 if use_mixer:
 	#initialize retrieval model
 	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_preweb_mixer_512_n16_b32_penult/checkpoint-120000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_1024_n16_b32_penult/checkpoint-70000/model.safetensors')
 
 else:
 	llama_config_kwargs = {
@@ -201,7 +201,7 @@ else:
 	configuration = LlamaConfig(**llama_config_kwargs)
 	model = LlamaForCausalLM(configuration)
 	retrieval_model = RetrievalTransformer(model).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_llama_512_n16_b32_penult/checkpoint-45000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_transformer_512_n16_b32_lpad_penult/checkpoint-45000/model.safetensors')
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -230,7 +230,7 @@ def load_dataset(finemath=True):
 query_dataset, target_dataset = load_dataset()
 total_correct = 0
 total = 0
-start, stop = 0, 2000
+start, stop = 180000, 200000
 for i in tqdm(range(start, stop)):
 	# Each query must come with a one-sentence instruction that describes the task
 	n_samples = 32
