@@ -386,7 +386,7 @@ class RetrievalIndexDataset(torch.utils.data.Dataset):
 	def __len__(self):
 		return self.length
 
-filepath = '/home/bbadger/Desktop/fineweb_mixer_1024_retrieval_200k.safetensors' 
+filepath = '/home/bbadger/Desktop/finemath_mixer_1024_retrieval_200k.safetensors' 
 with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_train_embeddings, target_test_embeddings = f.get_tensor('target_train'), f.get_tensor('target_test')
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
@@ -422,7 +422,7 @@ retrieval_model = RetrievalMixer(1024, 8, n_context)
 print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
-	num_train_epochs=200,
+	num_train_epochs=50,
 	per_device_train_batch_size=32,
 	per_device_eval_batch_size=32,
 	warmup_steps=500,
