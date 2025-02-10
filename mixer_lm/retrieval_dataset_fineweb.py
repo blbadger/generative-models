@@ -201,8 +201,8 @@ print ('pad token: ', tokenizer.encode(tokenizer.pad_token))
 path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-8k"
 data = load_from_disk(path)
 
-start, split, end = 200000, 380000, 400000
-offset = 0
+start, split, end = 0, 180000, 200000
+offset = 200000
 train_data = data[start+offset:split+offset]['input_ids']
 test_data = data[split+offset:end+offset]['input_ids']
 n_vocab = len(tokenizer)
