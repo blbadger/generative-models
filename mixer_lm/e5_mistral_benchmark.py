@@ -74,7 +74,7 @@ total = 0
 start, stop = 180000, 200000
 for i in tqdm(range(start, stop)):
 	# Each query must come with a one-sentence instruction that describes the task
-	n_samples = 32
+	n_samples = 64
 	task = 'Given a summary of a passage, find the corresponding text.'
 	queries = [
 		get_detailed_instruct(task, query_dataset[i])
@@ -87,8 +87,7 @@ for i in tqdm(range(start, stop)):
 	max_length = 512
 
 	# Tokenize the input texts
-	batch_dict = tokenizer(samples, max_length=max_length, padding=True, truncation=True, return_tensors='pt').to(device)
-	# print (batch_dict.input_ids[5, :])
+	batch_dict = tokenizer(samples, max_length=max_length, padding=True, truncation=True, return_tensors='pt').to(device)	
 	with torch.no_grad():
 		outputs = model(**batch_dict)
 		embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
