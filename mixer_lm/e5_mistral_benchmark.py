@@ -9,6 +9,7 @@ from accelerate import infer_auto_device_map
 from safetensors.torch import load_model, safe_open
 from transformers import LlamaModel, LlamaConfig, LlamaForCausalLM
 from tqdm import tqdm
+from safetensors.torch import save_file
 
 def generate_sample(query_dataset, target_dataset, index, dataset_size=20000, start_index=180000, n_context=128, replace=False):
 	prob_weights = torch.ones(dataset_size)
@@ -189,4 +190,4 @@ if __name__ == '__main__':
 
 	path = '/home/bbadger/Desktop/finemath_mistral_retrieval_200k_test.safetensors'
 	generate_embeddings(path)
-	# benchmark_samples()
+	# benchmark_embeddings(path)
