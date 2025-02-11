@@ -392,14 +392,14 @@ with safe_open(filepath, framework="pt", device='cpu') as f:
 	query_train_embeddings, query_test_embeddings = f.get_tensor('query_train'), f.get_tensor('query_test')
 target_test_embeddings = target_test_embeddings[:len(query_test_embeddings)] # if embedding sizes don't match
 
-second=False
+second=True
 if second:
-	filepath = '/home/bbadger/Desktop/fineweb_mixer_512_retrieval_200_400k.safetensors'
+	filepath = '/home/bbadger/Desktop/finemath_mixer_1024_retrieval_200_400k.safetensors'
 	with safe_open(filepath, framework="pt", device='cpu') as f:
 		target_train_embeddings = torch.cat((target_train_embeddings, f.get_tensor('target_train')))
-		target_test_embeddings = torch.cat((target_test_embeddings, f.get_tensor('target_test')))
+		#target_test_embeddings = torch.cat((target_test_embeddings, f.get_tensor('target_test')))
 		query_train_embeddings = torch.cat((query_train_embeddings, f.get_tensor('query_train')))
-		query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
+		#query_test_embeddings = torch.cat((query_test_embeddings, f.get_tensor('query_test')))
 
 third=False
 if third:
@@ -413,8 +413,8 @@ if third:
 	
 #print (tokenizer.decode(target_train_embeddings[201000]), tokenizer.decode(query_train_embeddings[201000]))
 n_context = 32
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=False, pre_index=False)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=False, pre_index=False)
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=True, pre_index=False)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=True, pre_index=False)
 print (len(target_test_embeddings), len(query_test_embeddings))
 
 # initialize retrieval model
@@ -423,15 +423,15 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=50,
-	per_device_train_batch_size=128,
-	per_device_eval_batch_size=128,
+	per_device_train_batch_size=256,
+	per_device_eval_batch_size=256,
 	warmup_steps=500,
 	eval_steps=2000,
 	save_steps=2000,
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps', 
-	output_dir='~/Desktop/finemath_retrieval_mixer_1024_n8_c32',
+	output_dir='~/Desktop/finemath_retrieval_mixer_1024_n8_c32_400k',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True
