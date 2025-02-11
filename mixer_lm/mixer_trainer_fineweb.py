@@ -260,13 +260,13 @@ n_vocab = len(tokenizer)
 print ('Vocab size: ', n_vocab)
 
 tokenized_length = 512
-dim = 1024
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
 model = LanguageMixer(n_vocab, dim, 16).float()
 count_parameters(model)
-train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-lpad-8k"
-test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c512-lpad-8k"
+train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-8k"
+test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c512-8k"
 
 def tokenization(example):
 	tokens = tokenizer.batch_encode_plus(
@@ -312,11 +312,11 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=5e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/finemath_mixer_1024_n16_c512_lpad',
+	output_dir='~/Desktop/finemath_mixer_512_n16_c512',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
-	max_steps=400000
+	max_steps=200000
 )
 
 trainer = transformers.Trainer(
@@ -328,5 +328,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-#trainer.train()
-trainer.train('/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-296000')
+trainer.train()
+#trainer.train('/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-296000')

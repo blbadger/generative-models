@@ -245,11 +245,11 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 512
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = False
+use_mixer = True
 if use_mixer:
 	#initialize retrieval model
 	n_layers = 16
@@ -311,14 +311,15 @@ else:
 	model = retrieval_model
 
 #print (model)
-path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
+#path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
+path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
 #path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device='cpu') as f:
 	for k in f.keys():
 		tokens[k] = f.get_tensor(k)
 
-split_index = 180000
+split_index = 380000
 train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index], right_padded=False)
 test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:], right_padded=False)
 
@@ -334,7 +335,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_finemath_transformer_512_n16_b32_lpad_penult',
+	output_dir='~/Desktop/contrastive_finemath_mixer_1024_n16_b32_lpad_penult_400k',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,

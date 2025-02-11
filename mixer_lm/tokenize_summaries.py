@@ -67,22 +67,11 @@ query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/h
 path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
 summary_dataset = map_dataset(query_text, label='summary')
 
-text_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-8k"
+text_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-lpad-8k"
 text_dataset = load_from_disk(text_path, keep_in_memory=None)
 text_dataset = extract_tokens(text_dataset, label='text')
 dataset = {**text_dataset, **summary_dataset}
 save_file(dataset, path)
-
-
-
-
-
-
-
-
-
-
-
 
 
 

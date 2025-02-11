@@ -5,21 +5,21 @@ import torch
 from safetensors.torch import load_model
 
 # embeddings path
-filepath = '/home/bbadger/Desktop/fineweb_llama_h4_retrieval_200k.safetensors' 
+filepath = '/home/bbadger/Desktop/finemath_mixer_1024_retrieval_200k.safetensors' 
 with safe_open(filepath, framework="pt", device='cpu') as f:
 	target_test_embeddings = f.get_tensor('target_test')
 	print ('targets loaded')
 	query_test_embeddings = f.get_tensor('query_test')
 	print ('queries loaded')
 
-n_context = 128
+n_context = 32
 test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context)
 
 # initialize retrieval model
-retrieval_model = RetrievalMixer(512, 8, n_context).to('cuda')
+retrieval_model = RetrievalMixer(1024, 8, n_context).to('cuda')
 retrieval_model.eval()
 # retrieval model path
-load_model(retrieval_model, '/home/bbadger/Desktop/model.safetensors')
+load_model(retrieval_model, '/home/bbadger/Desktop/finemath_retrieval_mixer_1024_n8_c32_400k/checkpoint-8000/model.safetensors')
 batch_size = 128
 dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
 

@@ -413,8 +413,8 @@ if third:
 	
 #print (tokenizer.decode(target_train_embeddings[201000]), tokenizer.decode(query_train_embeddings[201000]))
 n_context = 32
-train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=True, pre_index=False)
-test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=True, pre_index=False)
+train_dataset = RetrievalDataset(target_train_embeddings, query_train_embeddings, n_context=n_context, replace=False, pre_index=False)
+test_dataset = RetrievalDataset(target_test_embeddings, query_test_embeddings, n_context=n_context, replace=False, pre_index=False)
 print (len(target_test_embeddings), len(query_test_embeddings))
 
 # initialize retrieval model
@@ -423,8 +423,8 @@ print ('training begun')
 
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=50,
-	per_device_train_batch_size=256,
-	per_device_eval_batch_size=256,
+	per_device_train_batch_size=128,
+	per_device_eval_batch_size=128,
 	warmup_steps=500,
 	eval_steps=2000,
 	save_steps=2000,
