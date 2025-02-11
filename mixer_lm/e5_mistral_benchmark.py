@@ -116,13 +116,14 @@ def load_embeddings(path):
 	return query_embeddings, target_embeddings
 
 
-def benchmark_embeddings(n_context=32):
-	query_dataset, target_dataset = load_embeddings() # test set embeddings loaded
+def benchmark_embeddings(path, n_context=32):
+	query_dataset, target_dataset = load_embeddings(path) # test set embeddings loaded
 	total_correct = 0
 	total = 0
-	for i in tqdm(len(query_dataset)):
+	for i in tqdm(range(len(query_dataset))):
 		# No need to add instruction for retrieval documents
-		samples, target_index = generate_embedding_sample(query_dataset, target_dataset, i, n_context=n_samples)
+		embeddings, target_index = generate_embedding_sample(query_dataset, target_dataset, i, n_context=n_context)
+		embeddings = torch.stack(embeddings, dim=0).to(device)
 
 		# normalize embeddings
 		with torch.no_grad():
@@ -132,7 +133,7 @@ def benchmark_embeddings(n_context=32):
 			if top_index+1 == target_index:
 				total_correct += 1
 			total += 1
-			if i % 100 == 0:
+			if i % 5000 == 4999:
 				print (f'Top-1 accuracy: ', total_correct / total)
 				print ('Top index, target index', top_index, target_index)
 
@@ -182,12 +183,12 @@ if __name__ == '__main__':
 		bnb_4bit_compute_dtype=torch.float16
 	)
 
-	device = 'cuda' if torch.cuda.is_available() else 'cpu'
-	tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct")
-	model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", quantization_config=bnb_config, device_map='auto')
-	#model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", torch_dtype=torch.float16, device_map='auto')
-	reverse_tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+	# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	# tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct")
+	# model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", quantization_config=bnb_config, device_map='auto')
+	# #model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", torch_dtype=torch.float16, device_map='auto')
+	# reverse_tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 
 	path = '/home/bbadger/Desktop/finemath_mistral_retrieval_200k_test.safetensors'
-	generate_embeddings(path)
-	# benchmark_embeddings(path)
+	# generate_embeddings(path)
+	benchmark_embeddings(path)
