@@ -14,6 +14,7 @@ from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
 import threading
 from einops import rearrange
 from tqdm import tqdm
+from safetensors.torch import load_model, save_model, load_file, safe_open
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -171,7 +172,7 @@ def generate_embeddings(output_path):
 	total_correct = 0
 	total = 0
 	# test dataset samples only
-	start, stop = =380000, 400000
+	start, stop = 380000, 400000
 	query_embeddings = []
 	embeddings_path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
 	tokens = {}
@@ -180,25 +181,23 @@ def generate_embeddings(output_path):
 			tokens[k] = f.get_tensor(k)
 
 	for i in tqdm(range(start, stop)):
-		query = tokens['summary'][i]
+		query = tokens['summary'][i].unsqueeze(0)
 		with torch.no_grad():
-			outputs = model(query)
-			embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
+			outputs = retrieval_model(query, 0, [])[-2, :].unsqueeze(0)
 
 			# normalize embeddings
-			embeddings = F.normalize(embeddings, p=2, dim=1).detach().to('cpu').flatten()
+			embeddings = F.normalize(outputs, p=2, dim=1).detach().to('cpu').flatten()
 			query_embeddings.append(embeddings)
 	query_embeddings = torch.stack(query_embeddings).squeeze(1)
 
 	target_embeddings = []
 	for i in tqdm(range(start, stop)):
-		summary = tokens['text'][i]
+		summary = tokens['text'][i].unsqueeze(0)
 		with torch.no_grad():
-			outputs = model(summary)
-			embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
+			outputs = retrieval_model(summary, 0, [])[-2, :].unsqueze(0)
 
 			# normalize embeddings
-			embeddings = F.normalize(embeddings, p=2, dim=1).detach().to('cpu').flatten()
+			embeddings = F.normalize(outputs, p=2, dim=1).detach().to('cpu').flatten()
 			target_embeddings.append(embeddings)
 	
 	target_embeddings = torch.stack(target_embeddings).squeeze(1)
@@ -275,7 +274,7 @@ def load_dataset(finemath=True, second=True):
 
 if __name__ == "__main__":
 
-path = '/home/bbadger/Desktop/finemath_mixer_1024_n16_400k.safetensors'
+	path = '/home/bbadger/Desktop/finemath_mixer_1024_n16_400k.safetensors'
 	generate_embeddings(path)
 	# query_dataset, target_dataset = load_dataset()
 	# total_correct = 0
