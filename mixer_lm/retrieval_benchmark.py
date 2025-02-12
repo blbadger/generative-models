@@ -132,6 +132,17 @@ class RetrievalTransformer(nn.Module):
 		return model_output
 
 
+def generate_embedding_sample(query_dataset, target_dataset, index, dataset_size=20000, n_context=128, replace=False):
+	prob_weights = torch.ones(dataset_size)
+	input = [query_dataset[index]] # embedding of query placed in input
+	prob_weights[index] = 0 # zero out probability of query's target embedding chosen randomly
+	random_indices = torch.multinomial(prob_weights, n_context-1, replacement=replace)
+	for i in random_indices:
+		input.append(target_dataset[int(i)])
+	target_index = random.randint(1, n_context-1) # random index to put target embedding
+	input[target_index] = target_dataset[int(index)]
+	return input, target_index
+
 def infoNCEloss(output, matching_index=None, embedding_index=-2):
 	"""
 	Implements Noise-Contrastive Loss. Assumes that there is one positive pair per batch and all 
@@ -194,7 +205,7 @@ def generate_embeddings(output_path):
 	for i in tqdm(range(start, stop)):
 		summary = tokens['text'][i].unsqueeze(0)
 		with torch.no_grad():
-			outputs = retrieval_model(summary, 0, [])[-2, :].unsqueze(0)
+			outputs = retrieval_model(summary, 0, [])[-2, :].unsqueeze(0)
 
 			# normalize embeddings
 			embeddings = F.normalize(outputs, p=2, dim=1).detach().to('cpu').flatten()
@@ -205,6 +216,26 @@ def generate_embeddings(output_path):
 	save_file(dictionary, output_path)
 	return
 
+def benchmark_embeddings(path, n_context=32):
+	query_dataset, target_dataset = load_embeddings(path) # test set embeddings loaded
+	total_correct = 0
+	total = 0
+	for i in tqdm(range(len(query_dataset))):
+		# No need to add instruction for retrieval documents
+		embeddings, target_index = generate_embedding_sample(query_dataset, target_dataset, i, n_context=n_context)
+		embeddings = torch.stack(embeddings, dim=0).to(device)
+
+		# normalize embeddings
+		with torch.no_grad():
+			# assumes embeddings are pre-normalized
+			scores = (embeddings[:1] @ embeddings[1:].T) * 100
+			top_index = int(torch.topk(scores, 1).indices[0])
+			if top_index+1 == target_index:
+				total_correct += 1
+			total += 1
+
+	print (f'Top-1 accuracy: ', total_correct / total)
+	print ('Top index, target index', top_index, target_index)
 
 # random inits different for each GPU
 local_rank = threading.get_ident() % 1231
@@ -275,7 +306,9 @@ def load_dataset(finemath=True, second=True):
 if __name__ == "__main__":
 
 	path = '/home/bbadger/Desktop/finemath_mixer_1024_n16_400k.safetensors'
-	generate_embeddings(path)
+	generate_embeddings(path, n_context=64)
+	# benchmark_embeddings(path)
+
 	# query_dataset, target_dataset = load_dataset()
 	# total_correct = 0
 	# total = 0
