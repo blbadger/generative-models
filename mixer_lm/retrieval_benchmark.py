@@ -15,6 +15,7 @@ import threading
 from einops import rearrange
 from tqdm import tqdm
 from safetensors.torch import load_model, save_model, load_file, safe_open
+from safetensors.torch import save_file
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -216,6 +217,11 @@ def generate_embeddings(output_path):
 	save_file(dictionary, output_path)
 	return
 
+def load_embeddings(path):
+	with safe_open(path, framework="pt", device='cpu') as f:
+		target_embeddings, query_embeddings = f.get_tensor('target'), f.get_tensor('query')
+	return query_embeddings, target_embeddings
+
 def benchmark_embeddings(path, n_context=32):
 	query_dataset, target_dataset = load_embeddings(path) # test set embeddings loaded
 	total_correct = 0
@@ -306,8 +312,11 @@ def load_dataset(finemath=True, second=True):
 if __name__ == "__main__":
 
 	path = '/home/bbadger/Desktop/finemath_mixer_1024_n16_400k.safetensors'
-	generate_embeddings(path, n_context=64)
-	# benchmark_embeddings(path)
+#	generate_embeddings(path)
+	contexts = [4096]
+	for context in contexts:
+		print (f'Context size: {context}')
+		benchmark_embeddings(path, n_context=context)
 
 	# query_dataset, target_dataset = load_dataset()
 	# total_correct = 0
