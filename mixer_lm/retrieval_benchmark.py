@@ -186,7 +186,7 @@ use_mixer = True
 if use_mixer:
 	#initialize retrieval model
 	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_1024_n16_b32_lpad_penult_400k/checkpoint-40000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_1024_n16_b32_lpad_penult_400k/checkpoint-95000/model.safetensors')
 
 else:
 	llama_config_kwargs = {
