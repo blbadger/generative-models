@@ -166,6 +166,47 @@ def generate_sample(query_dataset, target_dataset, index, dataset_size=20000, st
 	input[target_index] = reverse_tokenizer.decode(target_dataset[int(index)]['input_ids'])
 	return input, target_index
 
+def generate_embeddings(output_path):
+	query_dataset, target_dataset = load_dataset()
+	total_correct = 0
+	total = 0
+	# test dataset samples only
+	start, stop = =380000, 400000
+	query_embeddings = []
+	embeddings_path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
+	tokens = {}
+	with safe_open(embeddings_path, framework="pt", device='cpu') as f:
+		for k in f.keys():
+			tokens[k] = f.get_tensor(k)
+
+	for i in tqdm(range(start, stop)):
+		query = tokens['summary'][i]
+		with torch.no_grad():
+			outputs = model(query)
+			embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
+
+			# normalize embeddings
+			embeddings = F.normalize(embeddings, p=2, dim=1).detach().to('cpu').flatten()
+			query_embeddings.append(embeddings)
+	query_embeddings = torch.stack(query_embeddings).squeeze(1)
+
+	target_embeddings = []
+	for i in tqdm(range(start, stop)):
+		summary = tokens['text'][i]
+		with torch.no_grad():
+			outputs = model(summary)
+			embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
+
+			# normalize embeddings
+			embeddings = F.normalize(embeddings, p=2, dim=1).detach().to('cpu').flatten()
+			target_embeddings.append(embeddings)
+	
+	target_embeddings = torch.stack(target_embeddings).squeeze(1)
+	dictionary = {'query': query_embeddings, 'target': target_embeddings}
+	save_file(dictionary, output_path)
+	return
+
+
 # random inits different for each GPU
 local_rank = threading.get_ident() % 1231
 torch.manual_seed(local_rank)
@@ -232,46 +273,49 @@ def load_dataset(finemath=True, second=True):
 
 	return query_dataset, target_dataset
 
+if __name__ == "__main__":
 
-query_dataset, target_dataset = load_dataset()
-total_correct = 0
-total = 0
-start, stop = 380000, 400000
-for i in tqdm(range(start, stop)):
-	# Each query must come with a one-sentence instruction that describes the task
-	n_samples = 32
-	queries = [
-		query_dataset[i]
-	]
-	# No need to add instruction for retrieval documents
-	samples, target_index = generate_sample(query_dataset, target_dataset, i, start_index=start, n_context=n_samples)
+path = '/home/bbadger/Desktop/finemath_mixer_1024_n16_400k.safetensors'
+	generate_embeddings(path)
+	# query_dataset, target_dataset = load_dataset()
+	# total_correct = 0
+	# total = 0
+	# start, stop = 380000, 400000
+	# for i in tqdm(range(start, stop)):
+	# 	# Each query must come with a one-sentence instruction that describes the task
+	# 	n_samples = 32
+	# 	queries = [
+	# 		query_dataset[i]
+	# 	]
+	# 	# No need to add instruction for retrieval documents
+	# 	samples, target_index = generate_sample(query_dataset, target_dataset, i, start_index=start, n_context=n_samples)
 
-	#samples[0] = str(queries[0])
-	samples[0] = query_dataset[i]
-	max_length = 512
-	# Tokenize the input texts
-	
-	batch_dict = tokenizer.batch_encode_plus(
-			samples,
-			add_special_tokens=False,
-			return_tensors='pt',
-			truncation=True,
-			padding='max_length',
-			padding_side='left', 
-			max_length=max_length
-		).to(device)
-	with torch.no_grad():
-		outputs = retrieval_model(batch_dict.input_ids, [i], [])
-		embeddings = outputs[:, -2, :]
-		# normalize embeddings
-		embeddings = F.normalize(embeddings, p=2, dim=1)
-		scores = (embeddings[:1] @ embeddings[1:].T) * 100
-		top_index = int(torch.topk(scores, 1).indices[0])
-		total += 1
-		if top_index+1 == target_index:
-			total_correct += 1
-		if i % 50 == 0: 
-			print ('Top index, target index', top_index, target_index)
-			print (f'Top-1 accuracy: ', total_correct / total)
+	# 	#samples[0] = str(queries[0])
+	# 	samples[0] = query_dataset[i]
+	# 	max_length = 512
+	# 	# Tokenize the input texts
+		
+	# 	batch_dict = tokenizer.batch_encode_plus(
+	# 			samples,
+	# 			add_special_tokens=False,
+	# 			return_tensors='pt',
+	# 			truncation=True,
+	# 			padding='max_length',
+	# 			padding_side='left', 
+	# 			max_length=max_length
+	# 		).to(device)
+	# 	with torch.no_grad():
+	# 		outputs = retrieval_model(batch_dict.input_ids, [i], [])
+	# 		embeddings = outputs[:, -2, :]
+	# 		# normalize embeddings
+	# 		embeddings = F.normalize(embeddings, p=2, dim=1)
+	# 		scores = (embeddings[:1] @ embeddings[1:].T) * 100
+	# 		top_index = int(torch.topk(scores, 1).indices[0])
+	# 		total += 1
+	# 		if top_index+1 == target_index:
+	# 			total_correct += 1
+	# 		if i % 50 == 0: 
+	# 			print ('Top index, target index', top_index, target_index)
+	# 			print (f'Top-1 accuracy: ', total_correct / total)
 
 	

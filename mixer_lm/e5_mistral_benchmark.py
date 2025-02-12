@@ -133,9 +133,9 @@ def benchmark_embeddings(path, n_context=32):
 			if top_index+1 == target_index:
 				total_correct += 1
 			total += 1
-			if i % 5000 == 4999:
-				print (f'Top-1 accuracy: ', total_correct / total)
-				print ('Top index, target index', top_index, target_index)
+
+	print (f'Top-1 accuracy: ', total_correct / total)
+	print ('Top index, target index', top_index, target_index)
 
 
 def benchmark_samples():
@@ -191,4 +191,4 @@ if __name__ == '__main__':
 
 	path = '/home/bbadger/Desktop/finemath_mistral_retrieval_200k_test.safetensors'
 	# generate_embeddings(path)
-	benchmark_embeddings(path)
+	benchmark_embeddings(path, n_context=8132)
