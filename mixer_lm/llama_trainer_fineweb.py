@@ -34,10 +34,10 @@ llama_config_kwargs = {
 configuration = LlamaConfig(**llama_config_kwargs)
 
 # Initializing a model from the llama-7b style configuration
-model = LlamaForCausalLM(configuration).float()
+#model = LlamaForCausalLM(configuration).float()
 
-# gpt_config = transformers.OpenAIGPTConfig(vocab_size=4096, n_positions=512, n_embd=512, n_layer=8, n_head=4)
-# model = transformers.OpenAIGPTLMHeadModel(gpt_config)
+gpt_config = transformers.OpenAIGPTConfig(vocab_size=8000, n_positions=512, n_embd=512, n_layer=16, n_head=4)
+model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
@@ -82,8 +82,8 @@ def tokenization(example):
 		)
     return tokens
 
-train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-lpad-8k"
-test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c512-lpad-8k"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 
 def map_dataset(train_path, test_path, split_index=50000):
 	"""
@@ -186,15 +186,15 @@ def reformat_inputs(train_data, test_data):
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/finemath_llama_n16_h4_lpad_c512',
+	output_dir='~/Desktop/fineweb_gpt_512_n16_c512',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000
@@ -209,5 +209,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-#trainer.train() 
-trainer.train('/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-76000')
+trainer.train() 
+#trainer.train('/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-76000')
