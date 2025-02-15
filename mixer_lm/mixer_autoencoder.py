@@ -136,17 +136,6 @@ class AutoencodingMixer(nn.Module):
 		loss = self.cel(output, labels)
 		return loss, output
 
-# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
-tokenizer.pad_token = tokenizer.eos_token
-n_vocab = len(tokenizer)
-print (tokenizer.is_fast)
-
-tokenized_length = 512
-dim = 1024
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = AutoencodingMixer(n_vocab, dim, 8)
-
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -161,13 +150,6 @@ def count_parameters(model):
 	print(table)
 	print(f"Total Trainable Params: {total_params}")
 	return total_params
-
-count_parameters(model)
-
-# cached dataset
-train_text = load_dataset("roneneldan/TinyStories", split="train")
-valid_text = load_dataset("roneneldan/TinyStories", split="validation")
-
 
 def tile_inputs(input_ids, tile_overlap=100, tile_size=828):
 	text_length = len(input_ids[0])
@@ -272,9 +254,6 @@ def tokenize_input(train_text, test_text):
 
 	return train_data, test_data
 
-train_data, test_data = batch_tokenize_input(train_text, valid_text)
-train_data, test_data = debatch_input(train_data), debatch_input(test_data)
-
 def reformat_inputs(train_data, test_data):
 	# reformat inputs for transformer modelz`
 	for i, _ in enumerate(train_data):
@@ -285,40 +264,62 @@ def reformat_inputs(train_data, test_data):
 	return train_data, test_data
 
 
-if isinstance(model, LlamaForCausalLM):
-	reformat_inputs(train_data, test_data)
+if __name__ == '__main__':
+	# tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
+	tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/experiments/tiny_token_4k")
+	tokenizer.pad_token = tokenizer.eos_token
+	n_vocab = len(tokenizer)
+	print (tokenizer.is_fast)
 
 
-mlflow.end_run()
-print ('training begun')
+	count_parameters(model)
 
-training_arguments = transformers.TrainingArguments(
-	num_train_epochs=7,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
-	warmup_steps=500,
-	eval_steps=4000,
-	save_steps=4000,
-	learning_rate=1e-4,
-	fp16=True,
-	evaluation_strategy='steps',
-	output_dir='~/Desktop/autoencoding_mixer_1024_n16_b32',
-	optim='adamw_torch',
-	overwrite_output_dir=True,
-	save_safetensors=True
-)
-
-trainer = transformers.Trainer(
-	model=model,
-	train_dataset=train_data,
-	eval_dataset=test_data,
-	args=training_arguments,
-	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-)
+	# cached dataset
+	train_text = load_dataset("roneneldan/TinyStories", split="train")
+	valid_text = load_dataset("roneneldan/TinyStories", split="validation")
 
 
-model.train()
-trainer.train('/home/bbadger/Desktop/autoencoding_mixer_1024_n16_b32/checkpoint-60000') # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'
-for name, param in model.named_parameters():
-	print (name)
+	tokenized_length = 512
+	dim = 1024
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	model = AutoencodingMixer(n_vocab, dim, 8)
+
+	train_data, test_data = batch_tokenize_input(train_text, valid_text)
+	train_data, test_data = debatch_input(train_data), debatch_input(test_data)
+
+	if isinstance(model, LlamaForCausalLM):
+		reformat_inputs(train_data, test_data)
+
+	mlflow.end_run()
+	print ('training begun')
+
+	training_arguments = transformers.TrainingArguments(
+		num_train_epochs=7,
+		per_device_train_batch_size=32,
+		per_device_eval_batch_size=32,
+		warmup_steps=500,
+		eval_steps=4000,
+		save_steps=4000,
+		learning_rate=1e-4,
+		fp16=True,
+		evaluation_strategy='steps',
+		output_dir='~/Desktop/autoencoding_mixer_1024_n16_b32',
+		optim='adamw_torch',
+		overwrite_output_dir=True,
+		save_safetensors=True
+	)
+
+	trainer = transformers.Trainer(
+		model=model,
+		train_dataset=train_data,
+		eval_dataset=test_data,
+		args=training_arguments,
+		data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+	)
+
+
+	model.train()
+	trainer.train('/home/bbadger/Desktop/autoencoding_mixer_1024_n16_b32/checkpoint-60000') # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'
+	for name, param in model.named_parameters():
+		print (name)
 
