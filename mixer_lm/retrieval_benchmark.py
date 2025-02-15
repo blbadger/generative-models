@@ -193,7 +193,7 @@ def generate_embeddings(output_path):
 			tokens[k] = f.get_tensor(k)
 
 	for i in tqdm(range(start, stop)):
-		query = tokens['summary'][i].unsqueeze(0)
+		query = tokens['summary'][i].unsqueeze(0).to(device)
 		with torch.no_grad():
 			outputs = retrieval_model(query, 0, [])[-2, :].unsqueeze(0)
 
@@ -204,7 +204,7 @@ def generate_embeddings(output_path):
 
 	target_embeddings = []
 	for i in tqdm(range(start, stop)):
-		summary = tokens['text'][i].unsqueeze(0)
+		summary = tokens['text'][i].unsqueeze(0).to(device)
 		with torch.no_grad():
 			outputs = retrieval_model(summary, 0, [])[-2, :].unsqueeze(0)
 
@@ -254,12 +254,12 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 1024
+dim = 512
 n_layers = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = True
+use_mixer = False
 if use_mixer:
 	#initialize retrieval model
 	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
@@ -278,7 +278,7 @@ else:
 	configuration = LlamaConfig(**llama_config_kwargs)
 	model = LlamaForCausalLM(configuration)
 	retrieval_model = RetrievalTransformer(model).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_transformer_512_n16_b32_lpad_penult/checkpoint-45000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_llama_512_n16_b32_lpad_penult_400k/checkpoint-95000/model.safetensors')
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -311,9 +311,9 @@ def load_dataset(finemath=True, second=True):
 
 if __name__ == "__main__":
 
-	path = '/home/bbadger/Desktop/finemath_mixer_1024_n16_400k.safetensors'
-#	generate_embeddings(path)
-	contexts = [4096]
+	path = '/home/bbadger/Desktop/finemath_llama_512_n16_400k.safetensors'
+	generate_embeddings(path)
+	contexts = [32]
 	for context in contexts:
 		print (f'Context size: {context}')
 		benchmark_embeddings(path, n_context=context)

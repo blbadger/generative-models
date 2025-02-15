@@ -245,11 +245,11 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 1024
+dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = True
+use_mixer = False
 if use_mixer:
 	#initialize retrieval model
 	n_layers = 16
@@ -335,7 +335,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_finemath_mixer_1024_n16_b32_lpad_penult_400k',
+	output_dir='~/Desktop/contrastive_finemath_llama_512_n16_b32_lpad_penult_400k',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
