@@ -311,52 +311,52 @@ def load_dataset(finemath=True, second=True):
 
 if __name__ == "__main__":
 
-	path = '/home/bbadger/Desktop/finemath_llama_512_n16_400k.safetensors'
-	generate_embeddings(path)
-	contexts = [32]
-	for context in contexts:
-		print (f'Context size: {context}')
-		benchmark_embeddings(path, n_context=context)
+	# path = '/home/bbadger/Desktop/finemath_llama_512_n16_400k.safetensors'
+	# generate_embeddings(path)
+	# contexts = [32]
+	# for context in contexts:
+	# 	print (f'Context size: {context}')
+	# 	benchmark_embeddings(path, n_context=context)
 
-	# query_dataset, target_dataset = load_dataset()
-	# total_correct = 0
-	# total = 0
-	# start, stop = 380000, 400000
-	# for i in tqdm(range(start, stop)):
-	# 	# Each query must come with a one-sentence instruction that describes the task
-	# 	n_samples = 32
-	# 	queries = [
-	# 		query_dataset[i]
-	# 	]
-	# 	# No need to add instruction for retrieval documents
-	# 	samples, target_index = generate_sample(query_dataset, target_dataset, i, start_index=start, n_context=n_samples)
+	query_dataset, target_dataset = load_dataset()
+	total_correct = 0
+	total = 0
+	start, stop = 380000, 400000
+	for i in tqdm(range(start, stop)):
+		# Each query must come with a one-sentence instruction that describes the task
+		n_samples = 32
+		queries = [
+			query_dataset[i]
+		]
+		# No need to add instruction for retrieval documents
+		samples, target_index = generate_sample(query_dataset, target_dataset, i, start_index=start, n_context=n_samples)
 
-	# 	#samples[0] = str(queries[0])
-	# 	samples[0] = query_dataset[i]
-	# 	max_length = 512
-	# 	# Tokenize the input texts
+		#samples[0] = str(queries[0])
+		samples[0] = query_dataset[i]
+		max_length = 512
+		# Tokenize the input texts
 		
-	# 	batch_dict = tokenizer.batch_encode_plus(
-	# 			samples,
-	# 			add_special_tokens=False,
-	# 			return_tensors='pt',
-	# 			truncation=True,
-	# 			padding='max_length',
-	# 			padding_side='left', 
-	# 			max_length=max_length
-	# 		).to(device)
-	# 	with torch.no_grad():
-	# 		outputs = retrieval_model(batch_dict.input_ids, [i], [])
-	# 		embeddings = outputs[:, -2, :]
-	# 		# normalize embeddings
-	# 		embeddings = F.normalize(embeddings, p=2, dim=1)
-	# 		scores = (embeddings[:1] @ embeddings[1:].T) * 100
-	# 		top_index = int(torch.topk(scores, 1).indices[0])
-	# 		total += 1
-	# 		if top_index+1 == target_index:
-	# 			total_correct += 1
-	# 		if i % 50 == 0: 
-	# 			print ('Top index, target index', top_index, target_index)
-	# 			print (f'Top-1 accuracy: ', total_correct / total)
+		batch_dict = tokenizer.batch_encode_plus(
+				samples,
+				add_special_tokens=False,
+				return_tensors='pt',
+				truncation=True,
+				padding='max_length',
+				padding_side='left', 
+				max_length=max_length
+			).to(device)
+		with torch.no_grad():
+			outputs = retrieval_model(batch_dict.input_ids, [i], [])
+			embeddings = outputs[:, -2, :]
+			# normalize embeddings
+			embeddings = F.normalize(embeddings, p=2, dim=1)
+			scores = (embeddings[:1] @ embeddings[1:].T) * 100
+			top_index = int(torch.topk(scores, 1).indices[0])
+			total += 1
+			if top_index+1 == target_index:
+				total_correct += 1
+			if i % 50 == 0: 
+				print ('Top index, target index', top_index, target_index)
+				print (f'Top-1 accuracy: ', total_correct / total)
 
 	
