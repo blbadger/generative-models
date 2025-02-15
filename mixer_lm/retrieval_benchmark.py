@@ -195,7 +195,7 @@ def generate_embeddings(output_path):
 	for i in tqdm(range(start, stop)):
 		query = tokens['summary'][i].unsqueeze(0).to(device)
 		with torch.no_grad():
-			outputs = retrieval_model(query, 0, [])[-2, :].unsqueeze(0)
+			outputs = retrieval_model(query, 0, [])[..., -2, :].unsqueeze(0)
 
 			# normalize embeddings
 			embeddings = F.normalize(outputs, p=2, dim=1).detach().to('cpu').flatten()
@@ -206,7 +206,7 @@ def generate_embeddings(output_path):
 	for i in tqdm(range(start, stop)):
 		summary = tokens['text'][i].unsqueeze(0).to(device)
 		with torch.no_grad():
-			outputs = retrieval_model(summary, 0, [])[-2, :].unsqueeze(0)
+			outputs = retrieval_model(summary, 0, [])[..., -2, :].unsqueeze(0)
 
 			# normalize embeddings
 			embeddings = F.normalize(outputs, p=2, dim=1).detach().to('cpu').flatten()
@@ -277,7 +277,7 @@ else:
 	# Initializing a LLaMA model
 	configuration = LlamaConfig(**llama_config_kwargs)
 	model = LlamaForCausalLM(configuration)
-	retrieval_model = RetrievalTransformer(model).float().to(device)
+	retrieval_model = RetrievalTransformer(model, prebatched=False).float().to(device)
 	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_llama_512_n16_b32_lpad_penult_400k/checkpoint-95000/model.safetensors')
 
 
@@ -313,7 +313,7 @@ if __name__ == "__main__":
 
 	path = '/home/bbadger/Desktop/finemath_llama_512_n16_400k.safetensors'
 	generate_embeddings(path)
-	contexts = [32]
+	contexts = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
 	for context in contexts:
 		print (f'Context size: {context}')
 		benchmark_embeddings(path, n_context=context)
