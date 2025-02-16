@@ -15,6 +15,7 @@ from safetensors import safe_open
 from safetensors.torch import save_file
 from mixer_multiconv import MultiHeadedMixer
 import datasets
+from mixer_autoencoder import AutoencodingMixer
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -264,7 +265,7 @@ dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
 # model = LanguageMixer(n_vocab, dim, 16).float()
-model = AutoencodingMixer(n_vocab, dim, 8).float()
+model = AutoencodingMixer(n_vocab, dim, 8, tokenized_length).float()
 
 count_parameters(model)
 train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"

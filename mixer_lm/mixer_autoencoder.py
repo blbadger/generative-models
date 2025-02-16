@@ -17,6 +17,7 @@ import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -94,13 +95,13 @@ class MixerBlock(nn.Module):
 
 class AutoencodingMixer(nn.Module):
 
-	def __init__(self, n_vocab, dim, depth):
+	def __init__(self, n_vocab, dim, depth, length):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.encoderblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,
-				length = tokenized_length,
+				length = length,
 				)
 			for i in range(depth)]
 			).to(device)
@@ -108,15 +109,15 @@ class AutoencodingMixer(nn.Module):
 		self.decoderblocks = nn.ModuleList(
 			[MixerBlock(
 				dim = dim,
-				length = tokenized_length
+				length = length
 				)
 			for i in range(depth)]
 			)
 		self.lm_head = nn.Linear(dim, n_vocab, bias=False)
 		self.cel = nn.CrossEntropyLoss()
-		self.tokenized_length = tokenized_length
+		self.tokenized_length = length
 
-	def forward(self, input_ids, labels=None):
+	def forward(self, input_ids, labels=None, **kwargs):
 		x = input_ids
 		x = x.to(device)
 		x = self.wte(x)
@@ -131,7 +132,8 @@ class AutoencodingMixer(nn.Module):
 			x = block(x)
 		
 		output = self.lm_head(x)
-		labels = rearrange(labels, 'b p t -> b (p t)')
+		if labels.dim() > 2:
+			labels = rearrange(labels, 'b p t -> b (p t)')
 		output = rearrange(output, 'b t e -> b e t')
 		loss = self.cel(output, labels)
 		return loss, output
@@ -282,7 +284,7 @@ if __name__ == '__main__':
 	tokenized_length = 512
 	dim = 1024
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
-	model = AutoencodingMixer(n_vocab, dim, 8)
+	model = AutoencodingMixer(n_vocab, dim, 8, tokenized_length)
 
 	train_data, test_data = batch_tokenize_input(train_text, valid_text)
 	train_data, test_data = debatch_input(train_data), debatch_input(test_data)
