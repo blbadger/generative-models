@@ -320,7 +320,7 @@ def load_dataset(finemath=True, second=True):
 
 if __name__ == "__main__":
 
-	path = '/home/bbadger/Desktop/finemath_llama_512_n16_400k.safetensors'
+	path = '/home/bbadger/Desktop/finemath_automixer_1024_n8_200k.safetensors'
 	generate_embeddings(path)
 	contexts = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
 	for context in contexts:
