@@ -22,6 +22,7 @@ from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
 import threading
 from accelerate import init_empty_weights
 from accelerate.utils import BnbQuantizationConfig, load_and_quantize_model
+from mixer_autoencoder import AutoencodingMixer
 
 
 def FeedForward(dim, expansion_factor=4):
@@ -140,6 +141,27 @@ class RetrievalTransformer(nn.Module):
 		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
 		return loss, model_output
 
+class RetrievalAutoencoder(nn.Module):
+
+	def __init__(self, model, prebatched=True):
+		super().__init__()
+		self.model = model
+		self.prebatched = prebatched
+
+	def forward(self, input_ids, matching_index, last_indices, **kwargs):
+		# LlamaModel forward pass
+		if self.prebatched:
+			input_ids = input_ids.squeeze(0) # p b t -> b t
+		x = self.model.wte(input_ids)
+		for block in self.model.encoderblocks:
+			x = block(x)
+		model_output = x
+		if last_indices:
+			embedding_indices = last_indices
+		else:
+			embedding_indices = -1
+		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
+		return loss, model_output
 
 
 def infoNCEloss(output, matching_index=None, embedding_index=-2):
@@ -193,18 +215,18 @@ class RetrievalDataset(torch.utils.data.Dataset):
 		self.summary_indices = []
 		self.text_indices = []
 		self.right_padded = right_padded
-		# if right_padded:
-		# 	for i in range(len(self.summary_tokens)):
-		# 		j = 0
-		# 		while j in range(len(summary_tokens[i])) and int(summary_tokens[i, j]) != self.pad_token:
-		# 			j += 1
-		# 		self.summary_indices.append(j-1)
+		if right_padded:
+			for i in range(len(self.summary_tokens)):
+				j = 0
+				while j in range(len(summary_tokens[i])) and int(summary_tokens[i, j]) != self.pad_token:
+					j += 1
+				self.summary_indices.append(j-1)
 
-		# 	for i in range(len(self.text_tokens)):
-		# 		j = 0
-		# 		while j in range(len(text_tokens[i])) and int(text_tokens[i, j]) != self.pad_token:
-		# 			j += 1
-		# 		self.text_indices.append(j-1)
+			for i in range(len(self.text_tokens)):
+				j = 0
+				while j in range(len(text_tokens[i])) and int(text_tokens[i, j]) != self.pad_token:
+					j += 1
+				self.text_indices.append(j-1)
 
 
 	def __getitem__(self, idx):
@@ -226,7 +248,6 @@ class RetrievalDataset(torch.utils.data.Dataset):
 					j += 1
 				last_indices.append(j-2)
 
-	#	print (f'index {idx} summary: {tokenizer.decode(self.summary_tokens[idx])}, match:{tokenizer.decode(self.text_tokens[idx])}')
 		retrieval_dict = {'input_ids': input.to(torch.long), 'matching_index': labels, 'last_indices': last_indices} # results in p b t shape upon load
 		return retrieval_dict
 
@@ -245,45 +266,21 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 512
+dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_mixer = False
+use_mixer = True
 if use_mixer:
 	#initialize retrieval model
-	n_layers = 16
-	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
+	n_layers = 8
+	# retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
+	model = 
+	retrieval_model = RetrievalAutoencoder(model)
 #	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-	load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-200000/model.safetensors')
-	modules = [f'mixerblocks.{i}.patch_ff.{j}' for i in range(n_layers) for j in range(0, 3, 2)]
-#	modules += [f'mixerblocks.{i}.conv' for i in range(n_layers)]
-
-	# with init_empty_weights():
-	# 	empty_model = LanguageMixer(n_vocab, 512, n_layers, n_context)
-
-	# bnb_quantization_config = BnbQuantizationConfig(
-	#   load_in_4bit=True,
-	#   bnb_4bit_compute_dtype=torch.float16,  
-	#   bnb_4bit_use_double_quant=True,         
-	#   bnb_4bit_quant_type="nf4"               
-	# )
-
-	# retrieval_model = load_and_quantize_model(
-	#   empty_model,
-	#   weights_location='/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors',
-	#   bnb_quantization_config=bnb_quantization_config,
-	# )
-
-	peft_config = LoraConfig(
-	#	init_lora_weights="olora",
-		r=8, 
-		lora_alpha=32, 
-		lora_dropout=0.,
-		target_modules=modules
-		)
+	# load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-200000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000/model.safetensors')
 	model = retrieval_model
-	#model = get_peft_model(retrieval_model, peft_config)
 
 else:
 	llama_config_kwargs = {
@@ -299,20 +296,11 @@ else:
 	model = LlamaForCausalLM(configuration)
 	load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-200000/model.safetensors')
 	retrieval_model = RetrievalTransformer(model).float()
-	peft_config = LoraConfig(
-	#	init_lora_weights="olora",
-		r=8, 
-		lora_alpha=32, 
-		lora_dropout=0.,
-		target_modules=['q_proj', 'v_proj', 'up_proj', 'down_proj', 'k_proj']
-		)
-
-	#model = get_peft_model(retrieval_model, peft_config)
 	model = retrieval_model
 
 #print (model)
-#path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors"
-path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
+path = "/home/bbadger/Desktop/contrastive-finemath-lpad-200k.safetensors"
+# path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
 #path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
 tokens = {}
 with safe_open(path, framework="pt", device='cpu') as f:
@@ -335,7 +323,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=1e-4,
 	fp16=True,
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_finemath_llama_512_n16_b32_lpad_penult_400k',
+	output_dir='~/Desktop/contrastive_finemath_automixer_1024_n8_b32',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
