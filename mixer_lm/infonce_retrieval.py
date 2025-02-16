@@ -251,88 +251,89 @@ class RetrievalDataset(torch.utils.data.Dataset):
 	def __len__(self):
 		return len(self.summary_tokens)
 
-# random inits different for each GPU
-local_rank = threading.get_ident() % 1231
-print (local_rank)
-torch.manual_seed(local_rank)
-random.seed(local_rank) 
-torch.cuda.manual_seed(local_rank)
+if __name__ == '__main__':
+	# random inits different for each GPU
+	local_rank = threading.get_ident() % 1231
+	print (local_rank)
+	torch.manual_seed(local_rank)
+	random.seed(local_rank) 
+	torch.cuda.manual_seed(local_rank)
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
-tokenizer.pad_token = tokenizer.eos_token
-n_vocab = len(tokenizer)
+	tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+	tokenizer.pad_token = tokenizer.eos_token
+	n_vocab = len(tokenizer)
 
-tokenized_length = 512
-dim = 1024
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-n_context = tokenized_length
+	tokenized_length = 512
+	dim = 1024
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	n_context = tokenized_length
 
-use_mixer = True
-if use_mixer:
-	#initialize retrieval model
-	n_layers = 8
-	# retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
-	model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
-	load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000/model.safetensors')
-	retrieval_model = RetrievalAutoencoder(model)
-#	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-	# load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-200000/model.safetensors')
-	model = retrieval_model
+	use_mixer = True
+	if use_mixer:
+		#initialize retrieval model
+		n_layers = 8
+		# retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
+		model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
+		load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000/model.safetensors')
+		retrieval_model = RetrievalAutoencoder(model)
+	#	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+		# load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-200000/model.safetensors')
+		model = retrieval_model
 
-else:
-	llama_config_kwargs = {
-		'hidden_size': dim,	
-		'intermediate_size': 4*dim,
-		'num_hidden_layers': 16,
-		'num_attention_heads': 4,
-		'vocab_size': 8000
-	}
+	else:
+		llama_config_kwargs = {
+			'hidden_size': dim,	
+			'intermediate_size': 4*dim,
+			'num_hidden_layers': 16,
+			'num_attention_heads': 4,
+			'vocab_size': 8000
+		}
 
-	# Initializing a LLaMA model
-	configuration = LlamaConfig(**llama_config_kwargs)
-	model = LlamaForCausalLM(configuration)
-	load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-200000/model.safetensors')
-	retrieval_model = RetrievalTransformer(model).float()
-	model = retrieval_model
+		# Initializing a LLaMA model
+		configuration = LlamaConfig(**llama_config_kwargs)
+		model = LlamaForCausalLM(configuration)
+		load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-200000/model.safetensors')
+		retrieval_model = RetrievalTransformer(model).float()
+		model = retrieval_model
 
-#print (model)
-path = "/home/bbadger/Desktop/contrastive-finemath-lpad-200k.safetensors"
-# path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
-#path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
-tokens = {}
-with safe_open(path, framework="pt", device='cpu') as f:
-	for k in f.keys():
-		tokens[k] = f.get_tensor(k)
+	#print (model)
+	path = "/home/bbadger/Desktop/contrastive-finemath-lpad-200k.safetensors"
+	# path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
+	#path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
+	tokens = {}
+	with safe_open(path, framework="pt", device='cpu') as f:
+		for k in f.keys():
+			tokens[k] = f.get_tensor(k)
 
-split_index = 180000
-train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index], right_padded=False)
-test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:], right_padded=False)
+	split_index = 180000
+	train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index], right_padded=False)
+	test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:], right_padded=False)
 
 
-pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
-training_arguments = transformers.TrainingArguments(
-	num_train_epochs=1,
-	per_device_train_batch_size=1, # actually defined in dataset subclass
-	per_device_eval_batch_size=1, # actually defined in dataset subclass
-	warmup_steps=500,
-	eval_steps=10000,
-	save_steps=10000,
-	learning_rate=1e-4,
-	fp16=True,
-	evaluation_strategy='steps',
-	output_dir='~/Desktop/contrastive_finemath_automixer_1024_n8_b32',
-	optim='adamw_torch',
-	overwrite_output_dir=True,
-	save_safetensors=True,
-	logging_steps=500
-)
+	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
+	training_arguments = transformers.TrainingArguments(
+		num_train_epochs=1,
+		per_device_train_batch_size=1, # actually defined in dataset subclass
+		per_device_eval_batch_size=1, # actually defined in dataset subclass
+		warmup_steps=500,
+		eval_steps=10000,
+		save_steps=10000,
+		learning_rate=1e-4,
+		fp16=True,
+		evaluation_strategy='steps',
+		output_dir='~/Desktop/contrastive_finemath_automixer_1024_n8_b32',
+		optim='adamw_torch',
+		overwrite_output_dir=True,
+		save_safetensors=True,
+		logging_steps=500
+	)
 
-trainer = transformers.Trainer(
-	model=model,
-	train_dataset=train_dataset,
-	eval_dataset=test_dataset,
-	args=training_arguments
-)
+	trainer = transformers.Trainer(
+		model=model,
+		train_dataset=train_dataset,
+		eval_dataset=test_dataset,
+		args=training_arguments
+	)
 
-trainer.train()
-#trainer.train("/home/bbadger/Desktop/contrastive_finemath_mixer_1024_n16_b32_penult/checkpoint-45000")
+	trainer.train()
+	#trainer.train("/home/bbadger/Desktop/contrastive_finemath_mixer_1024_n16_b32_penult/checkpoint-45000")
