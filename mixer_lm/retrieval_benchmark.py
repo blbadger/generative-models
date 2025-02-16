@@ -16,6 +16,8 @@ from einops import rearrange
 from tqdm import tqdm
 from safetensors.torch import load_model, save_model, load_file, safe_open
 from safetensors.torch import save_file
+from mixer_autoencoder import AutoencodingMixer
+from infonce_retrieval import RetrievalAutoencoder
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -259,13 +261,20 @@ n_layers = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
+use_autoencoder = True
 use_mixer = False
+use_transformer = False
+if use_autoencoder:
+	model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
+	retrieval_model = RetrievalAutoencoder(model)
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_automixer_1024_n8_b32/checkpoint-10000/model.safetensors')
+
 if use_mixer:
 	#initialize retrieval model
 	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
 	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_1024_n16_b32_lpad_penult_400k/checkpoint-95000/model.safetensors')
 
-else:
+elif use_transformer:
 	llama_config_kwargs = {
 		'hidden_size': dim,	
 		'intermediate_size': 4*dim,
