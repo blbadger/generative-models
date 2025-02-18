@@ -191,4 +191,4 @@ if __name__ == '__main__':
 
 	path = '/home/bbadger/Desktop/finemath_mistral_retrieval_200k_test.safetensors'
 	# generate_embeddings(path)
-	benchmark_embeddings(path, n_context=8132)
+	benchmark_embeddings(path, n_context=8192)

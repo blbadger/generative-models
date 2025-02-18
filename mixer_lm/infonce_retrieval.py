@@ -271,13 +271,13 @@ if __name__ == '__main__':
 	use_mixer = True
 	if use_mixer:
 		#initialize retrieval model
-		n_layers = 8
-		# retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
-		model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
-		load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000/model.safetensors')
-		retrieval_model = RetrievalAutoencoder(model)
-	#	load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-		# load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-200000/model.safetensors')
+		n_layers = 16
+		retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
+		#model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
+		#load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000/model.safetensors')
+		#retrieval_model = RetrievalAutoencoder(model)
+		#load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+		load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-360000/model.safetensors')
 		model = retrieval_model
 
 	else:
@@ -297,15 +297,15 @@ if __name__ == '__main__':
 		model = retrieval_model
 
 	#print (model)
-	path = "/home/bbadger/Desktop/contrastive-finemath-lpad-200k.safetensors"
-	# path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
+	#path = "/home/bbadger/Desktop/contrastive-finemath-lpad-200k.safetensors"
+	path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
 	#path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
 	tokens = {}
 	with safe_open(path, framework="pt", device='cpu') as f:
 		for k in f.keys():
 			tokens[k] = f.get_tensor(k)
 
-	split_index = 180000
+	split_index = 380000
 	train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index], right_padded=False)
 	test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:], right_padded=False)
 
@@ -321,7 +321,7 @@ if __name__ == '__main__':
 		learning_rate=1e-4,
 		fp16=True,
 		evaluation_strategy='steps',
-		output_dir='~/Desktop/contrastive_finemath_automixer_1024_n8_b32',
+		output_dir='~/Desktop/contrastive_finemath_mixer_extended_1024_n16_b32',
 		optim='adamw_torch',
 		overwrite_output_dir=True,
 		save_safetensors=True,

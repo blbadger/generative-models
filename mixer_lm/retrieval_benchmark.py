@@ -17,7 +17,6 @@ from tqdm import tqdm
 from safetensors.torch import load_model, save_model, load_file, safe_open
 from safetensors.torch import save_file
 from mixer_autoencoder import AutoencodingMixer
-from infonce_retrieval import RetrievalAutoencoder
 
 def FeedForward(dim, expansion_factor=4):
 	inner_dim = int(dim * expansion_factor)
@@ -134,6 +133,23 @@ class RetrievalTransformer(nn.Module):
 			embedding_indices = -2
 		return model_output
 
+class RetrievalAutoencoder(nn.Module):
+
+	def __init__(self, model, prebatched=True):
+		super().__init__()
+		self.model = model
+		self.prebatched = prebatched
+
+	def forward(self, input_ids, matching_index, last_indices, **kwargs):
+		# LlamaModel forward pass
+		if self.prebatched:
+			input_ids = input_ids.squeeze(0) # p b t -> b t
+		x = self.model.wte(input_ids)
+		for block in self.model.encoderblocks:
+			x = block(x)
+		model_output = x
+		return model_output
+
 
 def generate_embedding_sample(query_dataset, target_dataset, index, dataset_size=20000, n_context=128, replace=False):
 	prob_weights = torch.ones(dataset_size)
@@ -181,23 +197,23 @@ def generate_sample(query_dataset, target_dataset, index, dataset_size=20000, st
 	input[target_index] = reverse_tokenizer.decode(target_dataset[int(index)]['input_ids'])
 	return input, target_index
 
-def generate_embeddings(output_path):
+def generate_embeddings(output_path, index=-2):
 	query_dataset, target_dataset = load_dataset()
 	total_correct = 0
 	total = 0
 	# test dataset samples only
 	start, stop = 380000, 400000
 	query_embeddings = []
-	embeddings_path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
+	token_path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
 	tokens = {}
-	with safe_open(embeddings_path, framework="pt", device='cpu') as f:
+	with safe_open(token_path, framework="pt", device='cpu') as f:
 		for k in f.keys():
 			tokens[k] = f.get_tensor(k)
 
 	for i in tqdm(range(start, stop)):
 		query = tokens['summary'][i].unsqueeze(0).to(device)
 		with torch.no_grad():
-			outputs = retrieval_model(query, 0, [])[..., -2, :].unsqueeze(0)
+			outputs = retrieval_model(query, 0, [])[..., index, :].unsqueeze(0)
 
 			# normalize embeddings
 			embeddings = F.normalize(outputs, p=2, dim=1).detach().to('cpu').flatten()
@@ -208,7 +224,7 @@ def generate_embeddings(output_path):
 	for i in tqdm(range(start, stop)):
 		summary = tokens['text'][i].unsqueeze(0).to(device)
 		with torch.no_grad():
-			outputs = retrieval_model(summary, 0, [])[..., -2, :].unsqueeze(0)
+			outputs = retrieval_model(summary, 0, [])[..., index, :].unsqueeze(0)
 
 			# normalize embeddings
 			embeddings = F.normalize(outputs, p=2, dim=1).detach().to('cpu').flatten()
@@ -256,23 +272,23 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 512
+dim = 1024
 n_layers = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_autoencoder = True
-use_mixer = False
+use_autoencoder = False
+use_mixer = True
 use_transformer = False
 if use_autoencoder:
 	model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
-	retrieval_model = RetrievalAutoencoder(model)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_automixer_1024_n8_b32/checkpoint-10000/model.safetensors')
+	retrieval_model = RetrievalAutoencoder(model).float().to(device)
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_automixer_1024_n8_b32/checkpoint-60000/model.safetensors')
 
 if use_mixer:
 	#initialize retrieval model
 	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_1024_n16_b32_lpad_penult_400k/checkpoint-95000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_extended_1024_n16_b32/checkpoint-95000/model.safetensors')
 
 elif use_transformer:
 	llama_config_kwargs = {
@@ -320,9 +336,9 @@ def load_dataset(finemath=True, second=True):
 
 if __name__ == "__main__":
 
-	path = '/home/bbadger/Desktop/finemath_automixer_1024_n8_200k.safetensors'
-	generate_embeddings(path)
-	contexts = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+	path = '/home/bbadger/Desktop/finemath_mixer_1024_n16_400k.safetensors'
+	#generate_embeddings(path, index=-2)
+	contexts = [8192]
 	for context in contexts:
 		print (f'Context size: {context}')
 		benchmark_embeddings(path, n_context=context)
