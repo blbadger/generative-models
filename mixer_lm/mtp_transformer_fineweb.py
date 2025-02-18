@@ -67,8 +67,8 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 
-train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c32-8k-debatched"
-test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c32-8k-debatched"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 
 #map_dataset(train_path, test_path)
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
@@ -79,15 +79,15 @@ test_dataset = load_from_disk(test_path)
 mlflow.end_run()
 training_arguments = transformers.TrainingArguments(
 	num_train_epochs=3,
-	per_device_train_batch_size=256,
-	per_device_eval_batch_size=256,
+	per_device_train_batch_size=16,
+	per_device_eval_batch_size=16,
 	warmup_steps=500,
 	eval_steps=4000,
 	save_steps=4000,
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/mtp_finemath_llama_512_n16_c32',
+	output_dir='~/Desktop/mtp_fineweb_llama_512_n16_c512',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000
@@ -102,5 +102,5 @@ trainer = transformers.Trainer(
 )
 
 model.train()
-#trainer.train() 
-trainer.train('/home/bbadger/Desktop/mtp_finemath_llama_512_n16_c32/checkpoint-16000')
+trainer.train()
+# trainer.train('/home/bbadger/Desktop/mtp_finemath_llama_512_n16_c32/checkpoint-16000')
