@@ -17,17 +17,19 @@ from prettytable import PrettyTable
 from safetensors.torch import save_file
 from safetensors import safe_open
 import datasets
+from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer
 
 device = 0 if torch.cuda.is_available else 'cpu'
 
 dim = 512
 context_length = 512
+vocab_size = 8000
 llama_config_kwargs = {
     'hidden_size': dim,
     'intermediate_size': 4*dim,
-    'num_hidden_layers': 16,
+    'num_hidden_layers': 8,
     'num_attention_heads': 4,
-    'vocab_size': 8000
+    'vocab_size': vocab_size
 }
 
 # Initializing a LLaMA model
@@ -36,8 +38,17 @@ configuration = LlamaConfig(**llama_config_kwargs)
 # Initializing a model from the llama-7b style configuration
 #model = LlamaForCausalLM(configuration).float()
 
-gpt_config = transformers.OpenAIGPTConfig(vocab_size=8000, n_positions=512, n_embd=512, n_layer=16, n_head=4)
-model = transformers.OpenAIGPTLMHeadModel(gpt_config)
+# Initializing a model from the llama-7b style configuration
+encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
+
+# cached dataset
+# train_text = load_dataset("roneneldan/TinyStories", split="train")
+# valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+
+# gpt_config = transformers.OpenAIGPTConfig(vocab_size=8000, n_positions=512, n_embd=512, n_layer=16, n_head=4)
+# model = transformers.OpenAIGPTLMHeadModel(gpt_config)
 
 # tokenizer = AutoTokenizer.from_pretrained("huggyllama/llama-7b")
 tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
@@ -82,8 +93,6 @@ def tokenization(example):
 		)
     return tokens
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 
 def map_dataset(train_path, test_path, split_index=50000):
 	"""
@@ -99,10 +108,14 @@ def map_dataset(train_path, test_path, split_index=50000):
 	print ('datasets saved to disk')
 	return
 
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
+
 #map_dataset(train_path, test_path)
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
 train_dataset = load_from_disk(train_path)
 test_dataset = load_from_disk(test_path)
+
 def tokenize_input(train_text, test_text):
 	train_data, test_data = [], []
 	max_length = 512
@@ -162,6 +175,7 @@ if tokenize:
 
 	save_file(data_dict, '/home/bbadger/Desktop/tokenized_fineweb10b_16k.safetensors')
 	print ('tokens saved')
+
 load_input = False
 if load_input:
 	tensors = {}

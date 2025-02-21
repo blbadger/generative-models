@@ -16,9 +16,11 @@ import sentencepiece
 from tokenizers import ByteLevelBPETokenizer
 from transformers import LlamaConfig, LlamaForCausalLM
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 class AutoencodingTransformer(nn.Module):
 
-	def __init__(self, n_vocab, dim, encoder_model, decoder_model):
+	def __init__(self, n_vocab, dim, encoder_model, decoder_model, tokenized_length=512):
 		super().__init__()
 		self.wte = nn.Embedding(n_vocab, dim)
 		self.encoder = encoder_model
@@ -65,30 +67,6 @@ class AbbreviatedModel(nn.Module):
 			x = self.model.model.layers[i](x, position_ids=position_ids)[0]
 		return x
 
-tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
-tokenizer.pad_token = tokenizer.eos_token
-n_vocab = len(tokenizer)
-print (tokenizer.is_fast)
-
-tokenized_length = 512
-dim = 128
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-			
-llama_config_kwargs = {
-	'hidden_size': dim,
-	'intermediate_size': 4*dim,
-	'num_hidden_layers': 8,
-	'num_attention_heads': 4,
-	'vocab_size': 4096
-}
-
-# Initializing a LLaMA model
-configuration = LlamaConfig(**llama_config_kwargs)
-
-# Initializing a model from the llama-7b style configuration
-encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
-model = AutoencodingTransformer(n_vocab, dim, encoder_model, decoder_model)
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -104,11 +82,7 @@ def count_parameters(model):
 	print(f"Total Trainable Params: {total_params}")
 	return total_params
 
-count_parameters(model)
 
-# cached dataset
-train_text = load_dataset("roneneldan/TinyStories", split="train")
-valid_text = load_dataset("roneneldan/TinyStories", split="validation")
 
 def batch_tokenize_input(train_text, test_text, length=20000, batch_size=4096):
 	train_data, test_data = [], []
@@ -141,8 +115,6 @@ def batch_tokenize_input(train_text, test_text, length=20000, batch_size=4096):
 			test_data.append({'input_ids': tokens.input_ids[i, :], 'attention_mask': tokens.attention_mask[i, :]})
 	return train_data, test_data
 
-train_data, test_data = batch_tokenize_input(train_text, valid_text)
-
 def reformat_inputs(train_data, test_data):
 	# reformat inputs for transformer modelz`
 	for i, _ in enumerate(train_data):
@@ -152,40 +124,71 @@ def reformat_inputs(train_data, test_data):
 		test_data[i] = test_data[i].flatten()
 	return train_data, test_data
 
+if __name__ == '__main__':
+	tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tiny_token_4k")
+	tokenizer.pad_token = tokenizer.eos_token
+	n_vocab = len(tokenizer)
+	print (tokenizer.is_fast)
 
-if isinstance(model, LlamaForCausalLM):
-	reformat_inputs(train_data, test_data)
+	tokenized_length = 512
+	dim = 128
+				
+	llama_config_kwargs = {
+		'hidden_size': dim,
+		'intermediate_size': 4*dim,
+		'num_hidden_layers': 8,
+		'num_attention_heads': 4,
+		'vocab_size': 4096
+	}
 
-mlflow.end_run()
-print ('training begun')
+	# Initializing a LLaMA model
+	configuration = LlamaConfig(**llama_config_kwargs)
 
-training_arguments = transformers.TrainingArguments(
-	num_train_epochs=7,
-	per_device_train_batch_size=32,
-	per_device_eval_batch_size=32,
-	warmup_steps=500,
-	eval_steps=4000,
-	save_steps=4000,
-	learning_rate=1e-4,
-	fp16=True,
-	evaluation_strategy='steps',
-	output_dir='~/Desktop/tinystories_autoencoding_transformer_n8_b32',
-	optim='adamw_torch',
-	overwrite_output_dir=True,
-	save_safetensors=True
-)
+	# Initializing a model from the llama-7b style configuration
+	encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+	decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+	model = AutoencodingTransformer(n_vocab, dim, encoder_model, decoder_model)
 
-trainer = transformers.Trainer(
-	model=model,
-	train_dataset=train_data,
-	eval_dataset=test_data,
-	args=training_arguments,
-	data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-)
+	count_parameters(model)
+
+	# cached dataset
+	train_text = load_dataset("roneneldan/TinyStories", split="train")
+	valid_text = load_dataset("roneneldan/TinyStories", split="validation")
+
+	train_data, test_data = batch_tokenize_input(train_text, valid_text)
+	if isinstance(model, LlamaForCausalLM):
+		reformat_inputs(train_data, test_data)
+
+	mlflow.end_run()
+	print ('training begun')
+
+	training_arguments = transformers.TrainingArguments(
+		num_train_epochs=7,
+		per_device_train_batch_size=32,
+		per_device_eval_batch_size=32,
+		warmup_steps=500,
+		eval_steps=4000,
+		save_steps=4000,
+		learning_rate=1e-4,
+		fp16=True,
+		evaluation_strategy='steps',
+		output_dir='~/Desktop/tinystories_autoencoding_transformer_n8_b32',
+		optim='adamw_torch',
+		overwrite_output_dir=True,
+		save_safetensors=True
+	)
+
+	trainer = transformers.Trainer(
+		model=model,
+		train_dataset=train_data,
+		eval_dataset=test_data,
+		args=training_arguments,
+		data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+	)
 
 
-model.train()
-trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'
-for name, param in model.named_parameters():
-	print (name)
+	model.train()
+	trainer.train() # '/home/bbadger/Desktop/tinystories_mixer_128_f_n8/checkpoint-748000'
+	for name, param in model.named_parameters():
+		print (name)
 
