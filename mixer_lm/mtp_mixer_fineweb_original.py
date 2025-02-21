@@ -149,30 +149,23 @@ class LanguageMixer(nn.Module):
 		shift_logits = output[..., :-1].contiguous()
 		shift_labels = labels[..., 1:].contiguous()
 		loss = self.cel(shift_logits, shift_labels)
-		return loss, output
 
-
-class MTPMixer(nn.Module):
-
-	def __init__(self, model, n_tokens=2, **kwargs):
-		super().__init__()
-		self.model = model
-		self.n_tokens = n_tokens
-		self.cel = torch.nn.CrossEntropyLoss()
-
-	def forward(self, input_ids, labels=None, **kwargs):
-		x = input_ids
-		for i in range(self.n_tokens):
-			output = self.model(x, labels)[1] # take the output, not loss, of the model
-			shift_logits = output[..., :-(1 + i)].contiguous()
-			shift_labels = labels[..., (1 + i):].contiguous()
-			if 'loss' in vars():
-				loss += self.cel(shift_logits, shift_labels)
-			else:
-				loss = self.cel(shift_logits, shift_labels)
-			x = torch.argmax(output, dim=-2) # reassign input to the tokenized model output
+		for p in range(self.n_passes-1):
+			# assign tokens
+			x = torch.argmax(output, dim=-2)
+			x = self.wte(x)
+			for _, block in enumerate(self.mixerblocks):
+				x = block(x)
+			output = self.lm_head(x)
+			if labels.dim() > 2:
+				labels = rearrange(labels, 'b p t -> b (p t)')
+			output = rearrange(output, 'b t e -> b e t')
+			shift_logits = output[..., :-(2 + p)].contiguous()
+			shift_labels = labels[..., (2 + p):].contiguous()
+			loss += self.cel(shift_logits, shift_labels)
 
 		return loss, output
+
 
 def count_parameters(model):
 	table = PrettyTable(["Modules", "Parameters"])
@@ -196,10 +189,8 @@ tokenized_length = 512
 dim = 1024
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model = MultiHeadedMixer(n_vocab, dim, 8, heads=4).float().to(device)
-base_model = LanguageMixer(n_vocab, dim, 16).float().to(device)
-model = MTPMixer(base_model)
+model = LanguageMixer(n_vocab, dim, 16).float()
 count_parameters(model)
-
 train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
 test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 

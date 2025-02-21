@@ -288,7 +288,7 @@ if use_autoencoder:
 if use_mixer:
 	#initialize retrieval model
 	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_extended_1024_n16_b32/checkpoint-95000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_500k_1024_n16_b32/checkpoint-95000/model.safetensors')
 
 elif use_transformer:
 	llama_config_kwargs = {
@@ -336,9 +336,9 @@ def load_dataset(finemath=True, second=True):
 
 if __name__ == "__main__":
 
-	path = '/home/bbadger/Desktop/finemath_mixer_1024_n16_400k.safetensors'
-	#generate_embeddings(path, index=-2)
-	contexts = [8192]
+	path = '/home/bbadger/Desktop/finemath_mixer_1024_n16_500kpre_400k.safetensors'
+	generate_embeddings(path, index=-2)
+	contexts = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
 	for context in contexts:
 		print (f'Context size: {context}')
 		benchmark_embeddings(path, n_context=context)

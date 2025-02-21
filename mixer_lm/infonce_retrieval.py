@@ -277,7 +277,7 @@ if __name__ == '__main__':
 		#load_model(model, '/home/bbadger/Desktop/fineweb_autoencoding_mixer_n8_c512/checkpoint-200000/model.safetensors')
 		#retrieval_model = RetrievalAutoencoder(model)
 		#load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-		load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-360000/model.safetensors')
+		load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-500000/model.safetensors')
 		model = retrieval_model
 
 	else:
@@ -292,7 +292,7 @@ if __name__ == '__main__':
 		# Initializing a LLaMA model
 		configuration = LlamaConfig(**llama_config_kwargs)
 		model = LlamaForCausalLM(configuration)
-		load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-200000/model.safetensors')
+		#load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-200000/model.safetensors')
 		retrieval_model = RetrievalTransformer(model).float()
 		model = retrieval_model
 
@@ -312,7 +312,7 @@ if __name__ == '__main__':
 
 	pad_token = int(tokenizer.encode(tokenizer.pad_token)[-1])
 	training_arguments = transformers.TrainingArguments(
-		num_train_epochs=1,
+		num_train_epochs=2,
 		per_device_train_batch_size=1, # actually defined in dataset subclass
 		per_device_eval_batch_size=1, # actually defined in dataset subclass
 		warmup_steps=500,
@@ -321,7 +321,7 @@ if __name__ == '__main__':
 		learning_rate=1e-4,
 		fp16=True,
 		evaluation_strategy='steps',
-		output_dir='~/Desktop/contrastive_finemath_mixer_extended_1024_n16_b32',
+		output_dir='~/Desktop/contrastive_finemath_mixer_500k_1024_n16_b32',
 		optim='adamw_torch',
 		overwrite_output_dir=True,
 		save_safetensors=True,
@@ -335,5 +335,5 @@ if __name__ == '__main__':
 		args=training_arguments
 	)
 
-	trainer.train()
-	#trainer.train("/home/bbadger/Desktop/contrastive_finemath_mixer_1024_n16_b32_penult/checkpoint-45000")
+	#trainer.train()
+	trainer.train("/home/bbadger/Desktop/contrastive_finemath_mixer_500k_1024_n16_b32/checkpoint-95000")
