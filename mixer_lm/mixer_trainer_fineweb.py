@@ -319,7 +319,7 @@ training_arguments = transformers.TrainingArguments(
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	save_safetensors=True,
-	max_steps=200000
+	max_steps=500000
 )
 
 trainer = transformers.Trainer(
@@ -331,5 +331,5 @@ trainer = transformers.Trainer(
 )
 
 #model.train()
-trainer.train()
-#trainer.train('/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-200000')
+#trainer.train()
+trainer.train('/home/bbadger/Desktop/finemath_autoencoding_mixer_1024_n8_b32_lpad/checkpoint-200000')

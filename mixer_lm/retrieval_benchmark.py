@@ -273,17 +273,17 @@ n_vocab = len(tokenizer)
 
 tokenized_length = 512
 dim = 1024
-n_layers = 16
+n_layers = 8
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
 
-use_autoencoder = False
-use_mixer = True
+use_autoencoder = True
+use_mixer = False
 use_transformer = False
 if use_autoencoder:
 	model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
 	retrieval_model = RetrievalAutoencoder(model).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_automixer_1024_n8_b32/checkpoint-60000/model.safetensors')
+	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_autoencoding_mixer_500pre_400k_1024_n8_b32/checkpoint-95000/model.safetensors')
 
 if use_mixer:
 	#initialize retrieval model
@@ -336,9 +336,9 @@ def load_dataset(finemath=True, second=True):
 
 if __name__ == "__main__":
 
-	path = '/home/bbadger/Desktop/finemath_mixer_1024_n16_500kpre_400k.safetensors'
-	generate_embeddings(path, index=-2)
-	contexts = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+	path = '/home/bbadger/Desktop/finemath_mixer_autoencoder_400k_500pre.safetensors'
+	generate_embeddings(path, index=-1)
+	contexts = [2048, 4096, 8192]
 	for context in contexts:
 		print (f'Context size: {context}')
 		benchmark_embeddings(path, n_context=context)
