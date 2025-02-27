@@ -108,8 +108,8 @@ def map_dataset(train_path, test_path, split_index=50000):
 	print ('datasets saved to disk')
 	return
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
+train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-lpad-8k"
+test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c512-lpad-8k"
 
 #map_dataset(train_path, test_path)
 datasets.config.IN_MEMORY_MAX_SIZE = 35e9
@@ -208,7 +208,7 @@ training_arguments = transformers.TrainingArguments(
 	learning_rate=2e-4, 
 	fp16=True, 
 	evaluation_strategy='steps',
-	output_dir='~/Desktop/fineweb_gpt_512_n16_c512',
+	output_dir='~/Desktop/finemath_llama_autoencoder_512_n8',
 	optim='adamw_torch',
 	overwrite_output_dir=True,
 	max_steps=200000

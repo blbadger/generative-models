@@ -58,13 +58,14 @@ class AbbreviatedModel(nn.Module):
 
 	def forward(self, input_ids: torch.Tensor, **attention_mask: torch.Tensor):
 		# Matrix mult instead of embedding to prevent type incompatibility
-		x = input_ids
-		position_ids = self.position_ids.repeat(input_ids.shape[0], 1)
+		x = input_ids.to(device)
+		position_ids = self.position_ids.repeat(input_ids.shape[0], 1).to(device)
+		position_embeddings = self.model.model.rotary_emb(x, position_ids)
 		# if not attention_mask is None:
 		# 	attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).half()
 
 		for i in range(self.depth):
-			x = self.model.model.layers[i](x, position_ids=position_ids)[0]
+			x = self.model.model.layers[i](x, position_ids=position_ids, position_embeddings=position_embeddings)[0]
 		return x
 
 
