@@ -23,6 +23,7 @@ import threading
 from accelerate import init_empty_weights
 from accelerate.utils import BnbQuantizationConfig, load_and_quantize_model
 from mixer_autoencoder import AutoencodingMixer
+from transformer_autoencoder import AbbreviatedModel, AutoencodingTransformer
 
 
 def FeedForward(dim, expansion_factor=4):
@@ -161,6 +162,24 @@ class RetrievalAutoencoder(nn.Module):
 		return loss, model_output
 
 
+class RetrievalAutoencoderTransformer(nn.Module):
+
+	def __init__(self, model, prebatched=True):
+		super().__init__()
+		self.model = model
+		self.prebatched = prebatched
+
+	def forward(self, input_ids, matching_index, last_indices, **kwargs):
+		# LlamaModel forward pass
+		x = input_ids.to(device).squeeze(1)
+		x = self.wte(x)
+		x = self.encoder(x)
+		model_output = x
+		embedding_indices = -1
+		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
+		return loss, model_output
+
+
 def infoNCEloss(output, matching_index=None, embedding_index=-2):
 	"""
 	Implements Noise-Contrastive Loss. Assumes that there is one positive pair per batch and all 
@@ -265,38 +284,49 @@ if __name__ == '__main__':
 
 	tokenized_length = 512
 	dim = 1024
+	n_layers = 8
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
 	n_context = tokenized_length
 
-	use_mixer = True
+	use_mixer = False
+	autoencoder = True
 	if use_mixer:
 		#initialize retrieval model
-		n_layers = 8
-		#retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
-		model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
-		load_model(model, '/home/bbadger/Desktop/finemath_autoencoding_mixer_1024_n8_b32_lpad/checkpoint-500000/model.safetensors')
-		retrieval_model = RetrievalAutoencoder(model)
-		#load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-		#load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-500000/model.safetensors')
-		model = retrieval_model
+		if use_autoencoder:
+			model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
+			load_model(model, '/home/bbadger/Desktop/finemath_autoencoding_mixer_1024_n8_b32_lpad/checkpoint-500000/model.safetensors')
+			retrieval_model = RetrievalAutoencoder(model)
+		else:
+			retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
+			load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
+			#load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-500000/model.safetensors')
 
 	else:
 		llama_config_kwargs = {
 			'hidden_size': dim,	
 			'intermediate_size': 4*dim,
-			'num_hidden_layers': 16,
+			'num_hidden_layers': n_layers,
 			'num_attention_heads': 4,
 			'vocab_size': 8000
 		}
 
 		# Initializing a LLaMA model
 		configuration = LlamaConfig(**llama_config_kwargs)
-		model = LlamaForCausalLM(configuration)
-		#load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-200000/model.safetensors')
-		retrieval_model = RetrievalTransformer(model).float()
-		model = retrieval_model
 
-	#print (model)
+		if autoencoder:
+			encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+			decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
+			model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
+			load_model(model, '/home/bbadger/Desktop/finemath_llama_autoencoder_512_n8/checkpoint-200000/model.safetensors')
+			retrieval_model = RetrievalAutoencoderTransformer(model)
+
+		else:
+			model = LlamaForCausalLM(configuration)
+			load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-200000/model.safetensors')
+			retrieval_model = RetrievalTransformer(model).float()
+
+	model = retrieval_model
+
 	#path = "/home/bbadger/Desktop/contrastive-finemath-lpad-200k.safetensors"
 	path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
 	#path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
