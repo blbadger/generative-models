@@ -283,7 +283,7 @@ if __name__ == '__main__':
 	n_vocab = len(tokenizer)
 
 	tokenized_length = 512
-	dim = 1024
+	dim = 512
 	n_layers = 8
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
 	n_context = tokenized_length
@@ -314,9 +314,9 @@ if __name__ == '__main__':
 		configuration = LlamaConfig(**llama_config_kwargs)
 
 		if autoencoder:
-			encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-			decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=context_length)
-			model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=context_length)
+			encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+			decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+			model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=tokenized_length)
 			load_model(model, '/home/bbadger/Desktop/finemath_llama_autoencoder_512_n8/checkpoint-200000/model.safetensors')
 			retrieval_model = RetrievalAutoencoderTransformer(model)
 
