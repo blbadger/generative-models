@@ -302,12 +302,13 @@ if __name__ == '__main__':
 			#load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-500000/model.safetensors')
 
 	else:
+		vocab_size = 8000 # expects fineweb_tokenizer_8k
 		llama_config_kwargs = {
 			'hidden_size': dim,	
 			'intermediate_size': 4*dim,
 			'num_hidden_layers': n_layers,
 			'num_attention_heads': 4,
-			'vocab_size': 8000
+			'vocab_size': vocab_size
 		}
 
 		# Initializing a LLaMA model
