@@ -151,6 +151,23 @@ class RetrievalAutoencoder(nn.Module):
 		return model_output
 
 
+class RetrievalAutoencoderTransformer(nn.Module):
+
+	def __init__(self, model, prebatched=True):
+		super().__init__()
+		self.model = model
+		self.prebatched = prebatched
+
+	def forward(self, input_ids, matching_index, last_indices, **kwargs):
+		# LlamaModel forward pass
+		if self.prebatched:
+			x = input_ids.squeeze(0)
+		x = self.model.wte(x)
+		x = self.model.encoder(x)
+		model_output = x
+		return model_output
+
+
 def generate_embedding_sample(query_dataset, target_dataset, index, dataset_size=20000, n_context=128, replace=False):
 	prob_weights = torch.ones(dataset_size)
 	input = [query_dataset[index]] # embedding of query placed in input
@@ -272,38 +289,49 @@ tokenizer.pad_token = tokenizer.eos_token
 n_vocab = len(tokenizer)
 
 tokenized_length = 512
-dim = 1024
+dim = 512
 n_layers = 8
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 n_context = tokenized_length
+vocab_size = 8000
 
 use_autoencoder = True
 use_mixer = False
-use_transformer = False
-if use_autoencoder:
-	model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
-	retrieval_model = RetrievalAutoencoder(model).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_autoencoding_mixer_500pre_400k_1024_n8_b32/checkpoint-95000/model.safetensors')
+use_transformer = True
+
 
 if use_mixer:
-	#initialize retrieval model
-	retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_500k_1024_n16_b32/checkpoint-95000/model.safetensors')
+	if use_autoencoder:
+		model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
+		retrieval_model = RetrievalAutoencoder(model).float().to(device)
+		load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_autoencoding_mixer_500pre_400k_1024_n8_b32/checkpoint-95000/model.safetensors')
+	else:
+		#initialize retrieval model
+		retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context).float().to(device)
+		load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_mixer_500k_1024_n16_b32/checkpoint-95000/model.safetensors')
 
 elif use_transformer:
 	llama_config_kwargs = {
 		'hidden_size': dim,	
 		'intermediate_size': 4*dim,
-		'num_hidden_layers': 16,
+		'num_hidden_layers': 8,
 		'num_attention_heads': 4,
-		'vocab_size': 8000
+		'vocab_size': vocab_size
 	}
 
-	# Initializing a LLaMA model
-	configuration = LlamaConfig(**llama_config_kwargs)
-	model = LlamaForCausalLM(configuration)
-	retrieval_model = RetrievalTransformer(model, prebatched=False).float().to(device)
-	load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_llama_512_n16_b32_lpad_penult_400k/checkpoint-95000/model.safetensors')
+	if use_autoencoder:
+		encoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+		decoder_model = AbbreviatedModel(LlamaForCausalLM(configuration), tokenized_length=tokenized_length)
+		model = AutoencodingTransformer(vocab_size, dim, encoder_model, decoder_model, tokenized_length=tokenized_length)
+		retrieval_model = RetrievalAutoencoderTransformer(model)
+		load_model(retrieval_mode, '/home/bbadger/Desktop/contrastive_finemath_autoencoding_mixer_500pre_400k_1024_n8_b32checkpoint-126667')
+
+	else:
+		# Initializing a LLaMA model
+		configuration = LlamaConfig(**llama_config_kwargs)
+		model = LlamaForCausalLM(configuration)
+		retrieval_model = RetrievalTransformer(model, prebatched=False).float().to(device)
+		load_model(retrieval_model, '/home/bbadger/Desktop/contrastive_finemath_llama_512_n16_b32_lpad_penult_400k/checkpoint-95000/model.safetensors')
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -336,9 +364,9 @@ def load_dataset(finemath=True, second=True):
 
 if __name__ == "__main__":
 
-	path = '/home/bbadger/Desktop/finemath_mixer_autoencoder_400k_500pre.safetensors'
+	path = '/home/bbadger/Desktop/finemath_transformer_autoencoder_400k.safetensors'
 	generate_embeddings(path, index=-1)
-	contexts = [2048, 4096, 8192]
+	contexts = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
 	for context in contexts:
 		print (f'Context size: {context}')
 		benchmark_embeddings(path, n_context=context)
