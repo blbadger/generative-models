@@ -171,9 +171,10 @@ class RetrievalAutoencoderTransformer(nn.Module):
 
 	def forward(self, input_ids, matching_index, last_indices, **kwargs):
 		# LlamaModel forward pass
-		x = input_ids.to(device).squeeze(1)
-		x = self.wte(x)
-		x = self.encoder(x)
+		if self.prebatched:
+			x = input_ids.squeeze(0)
+		x = self.model.wte(x)
+		x = self.model.encoder(x)
 		model_output = x
 		embedding_indices = -1
 		loss = infoNCEloss(model_output, matching_index=matching_index, embedding_index=embedding_indices)
