@@ -25,7 +25,7 @@ def tokenization(example, n_ctx=128):
 
 def map_dataset(array, label='summary'):
 	"""
-	Map dataset to tokens. Suitable for large datasets, note that split_index is low (5k means hold out 5k rows from training)
+	Map dataset to tokens.
 	"""
 	tokenized_array = []
 	count = 0 
@@ -43,7 +43,7 @@ def map_dataset(array, label='summary'):
 	output_dict = {label: torch.stack(tokenized_array, dim=0)}
 	return output_dict
 
-def extract_tokens(dataset, limit=400000, label='text'):
+def extract_tokens(dataset, limit=800000, label='text'):
 	array = []
 	count = 0
 	for sample in dataset:
@@ -62,9 +62,12 @@ query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/h
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_200000_250000.json'))]
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_250000_300000.json'))]
 query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_300000_350000.json'))]
-query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_350000_400000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_400000_500000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_500000_600000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_600000_700000.json'))]
+query_text += [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/finemath_retrieval_700000_800000.json'))]
 
-path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
+path = "/home/bbadger/Desktop/contrastive-finemath-lpad-800k.safetensors"
 summary_dataset = map_dataset(query_text, label='summary')
 
 text_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-lpad-8k"
