@@ -284,23 +284,23 @@ if __name__ == '__main__':
 	n_vocab = len(tokenizer)
 
 	tokenized_length = 512
-	dim = 512
-	n_layers = 8
+	dim = 1024
+	n_layers = 16
 	device = 'cuda' if torch.cuda.is_available() else 'cpu'
 	n_context = tokenized_length
 
-	use_mixer = False
-	autoencoder = True
+	use_mixer = True
+	autoencoder = False
 	if use_mixer:
 		#initialize retrieval model
-		if use_autoencoder:
+		if autoencoder:
 			model = AutoencodingMixer(n_vocab, dim, n_layers, n_context) 
 			load_model(model, '/home/bbadger/Desktop/finemath_autoencoding_mixer_1024_n8_b32_lpad/checkpoint-500000/model.safetensors')
 			retrieval_model = RetrievalAutoencoder(model)
 		else:
 			retrieval_model = LanguageMixer(n_vocab, dim, n_layers, n_context)
-			load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_512_n16_b64_c512_lpad/checkpoint-200000/model.safetensors')
-			#load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-500000/model.safetensors')
+			#load_model(retrieval_model, '/home/bbadger/Desktop/fineweb_mixer_1024_n16_lpad/checkpoint-200000/model.safetensors')
+			load_model(retrieval_model, '/home/bbadger/Desktop/finemath_mixer_1024_n16_c512_lpad/checkpoint-200000/model.safetensors')
 
 	else:
 		vocab_size = 8000 # expects fineweb_tokenizer_8k
@@ -324,20 +324,23 @@ if __name__ == '__main__':
 
 		else:
 			model = LlamaForCausalLM(configuration)
-			load_model(model, '/home/bbadger/Desktop/finemath_llama_n16_h4_lpad_c512/checkpoint-200000/model.safetensors')
+			load_model(model, '/home/bbadger/Desktop/fineweb_llama_n16_h4_b32/checkpoint-200000/model.safetensors')
 			retrieval_model = RetrievalTransformer(model).float()
 
 	model = retrieval_model
 
+	#path = "/home/bbadger/Desktop/contrastive-fineweb-lpad-400k.safetensors"
 	#path = "/home/bbadger/Desktop/contrastive-finemath-lpad-200k.safetensors"
-	path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
+	#path = "/home/bbadger/Desktop/contrastive-finemath-lpad-400k.safetensors"
+	path = "/home/bbadger/Desktop/contrastive-finemath-lpad-800k.safetensors"
 	#path = "/home/bbadger/Desktop/contrastive-finemath-rpad-200k.safetensors"
 	tokens = {}
 	with safe_open(path, framework="pt", device='cpu') as f:
 		for k in f.keys():
 			tokens[k] = f.get_tensor(k)
-
-	split_index = 380000
+	print (len(tokens['text']), len(tokens['summary']))
+	split_index = 780000
+	assert split_index < len(tokens['text'])
 	train_dataset = RetrievalDataset(tokens['text'][:split_index], tokens['summary'][:split_index], right_padded=False)
 	test_dataset = RetrievalDataset(tokens['text'][split_index:], tokens['summary'][split_index:], right_padded=False)
 
@@ -348,12 +351,12 @@ if __name__ == '__main__':
 		per_device_train_batch_size=1, # actually defined in dataset subclass
 		per_device_eval_batch_size=1, # actually defined in dataset subclass
 		warmup_steps=500,
-		eval_steps=10000,
+		eval_steps=50000,
 		save_steps=10000,
 		learning_rate=1e-4,
 		fp16=True,
 		evaluation_strategy='steps',
-		output_dir='~/Desktop/contrastive_finemath_autoencoding_mixer_500pre_400k_1024_n8_b32',
+		output_dir='~/Desktop/contrastive_finemath_mixer_800k_200kpre_1024_n16_b32',
 		optim='adamw_torch',
 		overwrite_output_dir=True,
 		save_safetensors=True,
@@ -368,4 +371,4 @@ if __name__ == '__main__':
 	)
 
 	trainer.train()
-	#trainer.train("/home/bbadger/Desktop/contrastive_finemath_mixer_500k_1024_n16_b32/checkpoint-95000")
+	#trainer.train("/home/bbadger/Desktop/contrastive_fineweb_mixer_400k_1024_n16_b32/checkpoint-50000")

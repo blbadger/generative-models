@@ -50,7 +50,7 @@ def get_detailed_instruct(task_description: str, query: str) -> str:
 	return f'Instruct: {task_description}\nQuery: {query}'
 
 
-def load_dataset(finemath=True):
+def load_dataset(finemath=False):
 	if not finemath:
 		target_dataset = datasets.load_from_disk('/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512')
 		query_dataset = [i['choices'][0]['message']['content'] for i in json.load(open('/home/bbadger/Desktop/fineweb_retrieval_0_50000.json'))]
@@ -112,7 +112,7 @@ def generate_embeddings(path, max_length=512):
 
 def load_embeddings(path):
 	with safe_open(path, framework="pt", device='cpu') as f:
-		target_embeddings, query_embeddings = f.get_tensor('target'), f.get_tensor('query')
+		target_embeddings, query_embeddings = f.get_tensor('target'), f.get_tensor('query') # or 'target', 'query'
 	return query_embeddings, target_embeddings
 
 
@@ -183,12 +183,14 @@ if __name__ == '__main__':
 		bnb_4bit_compute_dtype=torch.float16
 	)
 
-	# device = 'cuda' if torch.cuda.is_available() else 'cpu'
-	# tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct")
-	# model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", quantization_config=bnb_config, device_map='auto')
-	# #model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", torch_dtype=torch.float16, device_map='auto')
-	# reverse_tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct")
+	model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", quantization_config=bnb_config, device_map='auto')
+	#model = AutoModel.from_pretrained("/home/bbadger/Desktop/e5-mistral-7b-instruct", torch_dtype=torch.float16, device_map='auto')
+	reverse_tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 
-	path = '/home/bbadger/Desktop/finemath_mistral_retrieval_200k_test.safetensors'
-	# generate_embeddings(path)
-	benchmark_embeddings(path, n_context=8192)
+	path = '/home/bbadger/Desktop/contrastive-fineweb-lpad-200k.safetensors'
+	#generate_embeddings(path)
+	contexts = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+	for c in contexts:
+		benchmark_embeddings(path, n_context=c)
