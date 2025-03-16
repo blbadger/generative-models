@@ -223,7 +223,7 @@ def generate_embeddings(output_path, index=-2):
 	# test dataset samples only
 	start, stop = 180000, 200000
 	query_embeddings = []
-	token_path = "/home/bbadger/Desktop/contrastive-fineweb-200k.safetensors"
+	token_path = "/home/bbadger/Desktop/contrastive-finemath-lpad-200k.safetensors"
 	tokens = {}
 	with safe_open(token_path, framework="pt", device='cpu') as f:
 		for k in f.keys():
