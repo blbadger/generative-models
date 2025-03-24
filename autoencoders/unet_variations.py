@@ -25,7 +25,9 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from collections import OrderedDict
 from prettytable import PrettyTable
 
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
+scaler = torch.amp.GradScaler("cuda" , enabled=True)
 print (device)
 
 class ImageDataset(Dataset):
@@ -121,7 +123,6 @@ image_size = 128
 channels = 3
 
 # model = UNet(3, 3)
-from prettytable import PrettyTable
 
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
@@ -190,22 +191,25 @@ def train_autoencoder(model, dataset='churches', epochs=5000):
         start_time = time.time()
         total_loss = 0
         total_mse_loss = 0
-        
-        for step, batch in enumerate(dataloader):
-            if len(batch) < batch_size:
-                break 
-            optimizer.zero_grad()
-            batch = batch.to(device_id, dtype=model_dtype) # discard class labels
-            output = ddp_model(batch) 
-  #          output = torch.clip(output, min=0, max=1)
-            loss = loss_fn(output, batch)
-            #loss = torch.masked_select(loss, loss > 0.01)
-            loss_size = loss.shape,
-            loss = torch.mean(loss) # torch.mean(loss)
-            total_loss += loss.item()
-            #print (loss.item())
-            loss.backward()
-            optimizer.step()
+        with torch.autocast(device_type=device, dtype=torch.float16, enabled=True):
+            for step, batch in enumerate(dataloader):
+                if len(batch) < batch_size:
+                    break 
+                
+                batch = batch.to(device_id, dtype=model_dtype) # discard class labels
+                output = ddp_model(batch) 
+      #          output = torch.clip(output, min=0, max=1)
+                loss = loss_fn(output, batch)
+                loss_size = loss.shape,
+                loss = torch.mean(loss) # torch.mean(loss)
+                total_loss += loss.item()
+
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+                # loss.backward()
+                # optimizer.step()
+                optimizer.zero_grad()
 
         if rank == 0:
             checkpoint_path = f'/home/bbadger/Desktop/landscapes_unetwidedeep/epoch_{epoch}'
@@ -219,6 +223,7 @@ def train_autoencoder(model, dataset='churches', epochs=5000):
  
 if __name__ == '__main__':
     train_autoencoder(model, dataset='landscapes')
+    
 # batch = next(iter(dataloader)).cpu().permute(0, 2, 3, 1).detach().numpy()
 # model.load_state_dict(torch.load('/home/bbadger/Downloads/499'))
 # checkpoint = torch.load('/home/bbadger/Desktop/epoch_490')

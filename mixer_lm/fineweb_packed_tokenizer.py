@@ -26,19 +26,20 @@ def packed_tokenization(example, n_ctx=32):
     tokens = tokens[:length].reshape(batch_size, n_ctx)
     return {'input_ids': tokens}
 
-def tokenization(example, n_ctx=1024):
+def tokenization(example, n_ctx=512):
 	tokens = tokenizer.batch_encode_plus(
 			example['text'],
 			add_special_tokens=False,
 			return_tensors='pt',
 			truncation=True,
 			padding='max_length',
+			padding_side='left', 
 			max_length=n_ctx
 		)
 	return tokens
 
-train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c1024-8k"
-test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c1024-8k"
+train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-lpad-8k"
+test_path = "/home/bbadger/Desktop/finemath-4-tokenized-test-c512-lpad-8k"
 
 def map_dataset(train_path, test_path, split_index=50000, packed=False):
 	"""

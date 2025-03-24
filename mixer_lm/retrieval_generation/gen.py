@@ -21,25 +21,26 @@ if __name__ == '__main__':
 		n_ctx=4096
 		)
 
-	train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
+	# train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
+	train_path = "/home/bbadger/Desktop/finemath-4-tokenized-train-c512-8k"
 	train_text = load_from_disk(train_path)
 	tokenizer = AutoTokenizer.from_pretrained("/home/bbadger/Desktop/tokenizer_fineweb_8k")
 	tokenizer.pad_token = tokenizer.eos_token
 
 	outputs = []
 	for j in tqdm(range(args.start, args.stop)):
-       		#text = train_text[j]['text']
+       		text = train_text[j]['text']
         	text = tokenizer.decode(train_text[j]['input_ids']).strip('<|end_of_text|>') # strip padding
         	output = model.create_chat_completion(
               		messages = [ 
         		{"role": "system", "content": "You are an assistant for creating summaries for short stories."},
                   		{
                       	"role": "user",
-                      	"content": f"Give a brief one-sentence summary of the following with no other output, do not begin with 'Here is a summary...'. Text: {text}"
+                      	"content": f"Give a brief few-word summary of the following with no other output, do not begin with 'Here is a summary...'. Text: {text}"
                   	}
         		]
         	)
-	        #print (text,'\n Summary: \n', output['choices'][0]['message']['content'])
+	       # print (text,'\n Summary: \n', output['choices'][0]['message']['content'])
        		outputs.append(output)
 
 	output_path = args.output_path + f'_{args.start}_{args.stop}.json'
