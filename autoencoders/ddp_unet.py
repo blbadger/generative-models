@@ -24,7 +24,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from collections import OrderedDict
 from prettytable import PrettyTable
-
+from functools import lru_cache	
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 scaler = torch.amp.GradScaler("cuda" , enabled=True)
@@ -47,6 +47,7 @@ class ImageDataset(Dataset):
 
         # construct image name list: randomly sample images for each epoch
         images = list(img_dir.glob('*' + image_type))[start:end]
+        print (len(images))
         self.image_name_ls = images
         self.img_dir = img_dir
         self.transform = transform
@@ -55,6 +56,7 @@ class ImageDataset(Dataset):
     def __len__(self):
         return len(self.image_name_ls)
 
+    @lru_cache()
     def __getitem__(self, index):
         # path to image
         img_path = os.path.join(self.image_name_ls[index])
@@ -197,16 +199,14 @@ def train_autoencoder(model, dataset='churches', epochs=5000):
                 output = ddp_model(batch) 
                 loss = loss_fn(output, batch)
 
-            loss_size = loss.shape,
-            loss = torch.mean(loss)
-            total_loss += loss.item()
+                loss_size = loss.shape,
+                loss = torch.mean(loss)
+                total_loss += loss.item()
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-            # loss.backward()
-            # optimizer.step()
-            optimizer.zero_grad()
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
 
         if rank == 0:
             checkpoint_path = f'/home/bbadger/Desktop/landscapes_unetwidedeep/epoch_{epoch}'
