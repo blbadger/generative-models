@@ -118,12 +118,6 @@ def show_batch(input_batch, count=0, grayscale=False, normalize=True, tag=None):
     plt.close()
     return
   
-batch_size = 32
-image_size = 128
-channels = 3
-
-# model = UNet(3, 3)
-
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
     total_params = 0
@@ -137,15 +131,6 @@ def count_parameters(model):
     print(f"Total Trainable Params: {total_params}")
     return total_params
 
-# model = UNetWide(3, 3).to(device)
-model = UNetDeepWide(3, 3)
-model_dtype = torch.float32
-# model = UNetWideHidden(3, 3).to(device)
-loss_fn = torch.nn.MSELoss(reduction='none')
-# loss_fn = torch.nn.BCELoss()
-cosine_loss = torch.nn.CosineSimilarity(dim=0)
-count_parameters(model)
-
 def load_model(model):
     model = model.to('cpu')
     checkpoint = torch.load('/home/bbadger/Desktop/churches_unetdeepwide/epoch_490', map_location=torch.device('cpu'))
@@ -156,7 +141,19 @@ def load_model(model):
     del checkpoint
     return model.to("cpu")
 
-#model = load_model(model)
+
+batch_size = 32
+image_size = 128
+channels = 3
+
+# model = UNetWide(3, 3).to(device)
+model = UNetDeepWide(3, 3)
+model_dtype = torch.float32
+# model = UNetWideHidden(3, 3).to(device)
+loss_fn = torch.nn.MSELoss(reduction='none')
+# loss_fn = torch.nn.BCELoss()
+cosine_loss = torch.nn.CosineSimilarity(dim=0)
+count_parameters(model)
 print ('model_loaded')
 
 def train_autoencoder(model, dataset='churches', epochs=5000):
@@ -198,18 +195,18 @@ def train_autoencoder(model, dataset='churches', epochs=5000):
                 
                 batch = batch.to(device_id, dtype=model_dtype) # discard class labels
                 output = ddp_model(batch) 
-      #          output = torch.clip(output, min=0, max=1)
                 loss = loss_fn(output, batch)
-                loss_size = loss.shape,
-                loss = torch.mean(loss) # torch.mean(loss)
-                total_loss += loss.item()
 
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-                # loss.backward()
-                # optimizer.step()
-                optimizer.zero_grad()
+            loss_size = loss.shape,
+            loss = torch.mean(loss)
+            total_loss += loss.item()
+
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            # loss.backward()
+            # optimizer.step()
+            optimizer.zero_grad()
 
         if rank == 0:
             checkpoint_path = f'/home/bbadger/Desktop/landscapes_unetwidedeep/epoch_{epoch}'
