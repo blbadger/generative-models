@@ -176,7 +176,7 @@ def train_autoencoder(model, dataset='churches', epochs=5000):
     else:  
         data_dir = pathlib.Path('/home/bbadger/Desktop/landscapes', fname='Combined')
         train_data = ImageDataset(data_dir, rank, image_type='.jpg')
-        dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+        dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
 
     # create model and move it to GPU with id rank
     device_id = rank % torch.cuda.device_count()
@@ -190,11 +190,10 @@ def train_autoencoder(model, dataset='churches', epochs=5000):
         start_time = time.time()
         total_loss = 0
         total_mse_loss = 0
-        with torch.autocast(device_type=device, dtype=torch.float16, enabled=True):
-            for step, batch in enumerate(dataloader):
-                if len(batch) < batch_size:
-                    break 
-                
+        for step, batch in enumerate(dataloader):
+            if len(batch) < batch_size:
+                break 
+            with torch.autocast(device_type=device, dtype=torch.float16, enabled=True):
                 batch = batch.to(device_id) # discard class labels
                 output = ddp_model(batch) 
                 loss = loss_fn(output, batch)
@@ -203,10 +202,10 @@ def train_autoencoder(model, dataset='churches', epochs=5000):
                 loss = torch.mean(loss)
                 total_loss += loss.item()
 
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-                optimizer.zero_grad()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
 
         if rank == 0:
             checkpoint_path = f'/home/bbadger/Desktop/landscapes_unetwidedeep/epoch_{epoch}'
