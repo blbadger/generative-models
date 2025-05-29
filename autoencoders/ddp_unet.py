@@ -145,17 +145,20 @@ def load_model(model):
 
 
 batch_size = 32
+gradient_accumulations = 1
 image_size = 128
 channels = 3
 
 # model = UNetWide(3, 3).to(device)
 model = UNetDeepWide(3, 3)
 model_dtype = torch.float16
+#model = model.to(model_dtype)
 # model = UNetWideHidden(3, 3).to(device)
 loss_fn = torch.nn.MSELoss(reduction='none')
 # loss_fn = torch.nn.BCELoss()
 cosine_loss = torch.nn.CosineSimilarity(dim=0)
-count_parameters(model)
+#count_parameters(model)
+print (model)
 print ('model_loaded')
 
 def train_autoencoder(model, dataset='churches', epochs=5000):
@@ -190,26 +193,28 @@ def train_autoencoder(model, dataset='churches', epochs=5000):
         start_time = time.time()
         total_loss = 0
         total_mse_loss = 0
+        accumulation_loss = torch.tensor(0.).to(device_id)
         for step, batch in enumerate(dataloader):
             if len(batch) < batch_size:
                 break 
+            
             with torch.autocast(device_type=device, dtype=torch.float16, enabled=True):
                 batch = batch.to(device_id) # discard class labels
                 output = ddp_model(batch) 
                 loss = loss_fn(output, batch)
 
-                loss_size = loss.shape,
-                loss = torch.mean(loss)
+                loss_size = loss.shape
+                loss = torch.sum(loss)
                 total_loss += loss.item()
-
             scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-            optimizer.zero_grad()
+            if (step + 1) % gradient_accumulations == 0:
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
 
         if rank == 0:
-            checkpoint_path = f'/home/bbadger/Desktop/landscapes_unetwidedeep/epoch_{epoch}'
-            if epoch % 1000 == 0: torch.save(ddp_model.state_dict(), checkpoint_path)
+            checkpoint_path = f'/home/bbadger/Desktop/churches_unetwidedeep/epoch_{epoch}'
+            if epoch % 100 == 0: torch.save(ddp_model.state_dict(), checkpoint_path)
             tqdm.write(f"Epoch {epoch} completed in {time.time() - start_time} seconds")
             tqdm.write(f"Average Loss: {round(total_loss / step, 5)}")
             tqdm.write(f"Loss shape: {loss_size}")
@@ -218,4 +223,4 @@ def train_autoencoder(model, dataset='churches', epochs=5000):
     dist.destroy_process_group()
  
 if __name__ == '__main__':
-    train_autoencoder(model, dataset='landscapes')
+    train_autoencoder(model, dataset='churches')
