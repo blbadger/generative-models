@@ -125,8 +125,8 @@ dim = 512
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = LanguageMixer(n_vocab, dim, 24).float().to(device)
 
-train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train"
-test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test"
+train_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-train-c512"
+test_path = "/home/bbadger/Desktop/fineweb-edu-tokenized-test-c512"
 def tokenization(example):
 	tokens = tokenizer.batch_encode_plus(
 		example['text'],
