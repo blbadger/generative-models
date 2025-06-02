@@ -1,4 +1,3 @@
-# Ignore all text files
-*.txt
-
+/mixer_lm/venv
+/mixer_lm/mixer-venv
 /mixer_lm/mlruns
